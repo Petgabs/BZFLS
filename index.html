@@ -519,10 +519,22 @@
                     `${COUNTER_BASE}/${action}/${encodeURIComponent(COUNTER_NAMESPACE)}/${encodeURIComponent(key)}`,
                     { cache: 'no-store', signal: controller.signal }
                 );
-                // A counter that has never been hit simply does not exist yet.
-                if (response.status === 404) return 0;
+
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch (error) {
+                    data = null;
+                }
+
+                // A counter that has never been hit yet simply does not exist. The
+                // service reports that as "Key not found" (sometimes with a 200),
+                // which means zero downloads rather than an outage.
+                const missing = /not\s*found/i.test(String(data?.error || ''));
+                if (response.status === 404 || missing) return 0;
+
                 if (!response.ok) throw new Error(`Counter service returned ${response.status}`);
-                const data = await response.json();
+
                 const value = Number(data?.value);
                 if (!Number.isFinite(value)) throw new Error('Counter service returned an invalid value.');
                 writeMirror(key, value);
