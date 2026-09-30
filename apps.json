@@ -1,0 +1,20 @@
+---
+layout: null
+permalink: /apps.json
+---
+[
+{% assign first_app = true %}
+{% for file in site.static_files %}
+{% assign extension = file.extname | downcase %}
+{% if file.path contains '/apps/' and extension == '.html' %}
+  {% unless first_app %},{% endunless %}{
+    "type": "file",
+    "name": {{ file.name | jsonify }},
+    "path": {{ file.path | remove_first: "/" | jsonify }},
+    "sha": {{ file.path | jsonify }},
+    "download_url": {{ site.baseurl | append: file.path | jsonify }}
+  }
+{% assign first_app = false %}
+{% endif %}
+{% endfor %}
+]

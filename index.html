@@ -58,14 +58,14 @@
                     <i data-lucide="upload-cloud" class="w-5 h-5 text-indigo-100"></i>
                 </div>
                 <h3 class="text-lg font-bold text-white">1. Share Apps</h3>
-                <p class="text-indigo-100 text-sm leading-relaxed">Teachers upload mini HTML apps for simulations or quizzes.</p>
+                <p class="text-indigo-100 text-sm leading-relaxed">Teachers save mini HTML apps locally or share them through the public GitHub repository.</p>
             </div>
             <div class="flex flex-col gap-3">
                 <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
                     <i data-lucide="database" class="w-5 h-5 text-indigo-100"></i>
                 </div>
-                <h3 class="text-lg font-bold text-white">2. Store Locally</h3>
-                <p class="text-indigo-100 text-sm leading-relaxed">Everything is saved in your browser storage for instant access.</p>
+                <h3 class="text-lg font-bold text-white">2. Sync the Library</h3>
+                <p class="text-indigo-100 text-sm leading-relaxed">Public apps sync from GitHub, while drafts stay in your browser.</p>
             </div>
             <div class="flex flex-col gap-3">
                 <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
@@ -118,7 +118,8 @@
                                     <i data-lucide="download" class="w-4 h-4"></i>
                                     Download
                                 </button>
-                                <button @click="deleteApp(app.id)" 
+                                <button x-show="app.source !== 'github'" @click="deleteApp(app.id)"
+                                        aria-label="Remove local app"
                                         class="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                 </button>
@@ -137,10 +138,15 @@
                         <i data-lucide="arrow-left" class="w-4 h-4"></i>
                         Back to Library
                     </button>
-                    <h2 class="text-2xl font-bold">Publish Mini App</h2>
+                    <h2 class="text-2xl font-bold">Add Mini App</h2>
                 </div>
 
-                <form @submit.prevent="handleUpload" class="space-y-6">
+                <div class="bg-blue-50 border border-blue-100 p-4 rounded-lg mb-6 flex gap-3">
+                    <i data-lucide="info" class="w-5 h-5 text-blue-500 flex-shrink-0"></i>
+                    <p class="text-sm text-blue-700">Saving here keeps the app in this browser. To share it with everyone, use the GitHub upload link below and upload the same HTML file.</p>
+                </div>
+
+                <form x-ref="uploadForm" @submit.prevent="handleUpload" class="space-y-6">
                     <div>
                         <label class="block text-sm font-medium text-slate-700 mb-1">App Name</label>
                         <input type="text" x-model="newApp.name" required placeholder="e.g., Periodic Table Explorer"
@@ -174,16 +180,27 @@
                         </div>
                     </div>
 
-                    <button type="submit" :disabled="uploading"
+                    <button type="submit" :disabled="uploading || !fileReady"
                             class="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3.5 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-lg shadow-indigo-100">
                         <span x-show="!uploading" class="flex items-center gap-2">
-                            <i data-lucide="cloud-upload" class="w-5 h-5"></i> Publish to SchoolCloud
+                            <i data-lucide="save" class="w-5 h-5"></i> Save to This Browser
                         </span>
                         <span x-show="uploading" class="flex items-center gap-2">
                             <svg class="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                            Processing...
+                            Saving...
                         </span>
                     </button>
+
+                    <div class="relative py-1">
+                        <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+                        <div class="relative flex justify-center"><span class="bg-white px-3 text-xs uppercase tracking-wide text-slate-400">Share publicly</span></div>
+                    </div>
+
+                    <a :href="githubUploadUrl()" target="_blank" rel="noopener noreferrer"
+                       class="w-full flex items-center justify-center gap-2 border border-slate-300 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-50 transition-colors">
+                        <i data-lucide="github" class="w-5 h-5"></i> Upload File Through GitHub
+                        <i data-lucide="external-link" class="w-4 h-4"></i>
+                    </a>
                 </form>
             </div>
         </div>
@@ -198,32 +215,32 @@
                     <h2 class="text-2xl font-bold">Cloud Settings</h2>
                 </div>
 
-                <div class="bg-blue-50 border border-blue-100 p-4 rounded-lg mb-8 flex gap-3">
-                    <i data-lucide="info" class="w-5 h-5 text-blue-500 flex-shrink-0"></i>
-                    <p class="text-sm text-blue-700">This standalone version stores data locally in your browser. To sync with GitHub, enter your repository details below.</p>
+                <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-lg mb-8 flex gap-3">
+                    <i data-lucide="shield-check" class="w-5 h-5 text-emerald-600 flex-shrink-0"></i>
+                    <p class="text-sm text-emerald-800">Public mode reads apps without a Personal Access Token. Credentials are never embedded in the site or saved in browser storage.</p>
                 </div>
 
                 <div class="space-y-6">
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">GitHub Personal Access Token</label>
-                        <input type="password" x-model="githubConfig.token" placeholder="ghp_xxxxxxxxxxxx" 
+                        <label for="github-repository" class="block text-sm font-medium text-slate-700 mb-1">Public Repository (Owner/Repo)</label>
+                        <input id="github-repository" type="text" x-model="githubConfig.repo" placeholder="Petgabs/BZFLS"
                                class="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <p class="text-[10px] text-slate-400 mt-1">Required for uploading to GitHub. Create one in GitHub Settings > Developer Settings.</p>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Repository (Owner/Repo)</label>
-                        <input type="text" x-model="githubConfig.repo" placeholder="e.g., myusername/school-apps" 
-                               class="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <p class="text-xs text-slate-400 mt-1">The repository must be public and contain an <code>apps</code> folder.</p>
                     </div>
                     
-                    <button @click="saveSettings()" class="w-full bg-slate-900 text-white py-2 rounded-lg font-bold hover:bg-slate-800 transition-colors">
-                        Save Configuration
+                    <button @click="saveSettings()" :disabled="syncing" class="w-full bg-slate-900 text-white py-2 rounded-lg font-bold hover:bg-slate-800 transition-colors disabled:opacity-50">
+                        Save and Sync
                     </button>
 
                     <div class="pt-4 border-t flex flex-col gap-2">
-                        <button @click="syncFromGithub()" class="text-indigo-600 text-sm font-medium flex items-center gap-2 hover:bg-indigo-50 p-2 rounded-lg transition-colors">
-                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Sync Library from GitHub
+                        <button @click="syncFromGithub()" :disabled="syncing" class="text-indigo-600 text-sm font-medium flex items-center gap-2 hover:bg-indigo-50 p-2 rounded-lg transition-colors disabled:opacity-50">
+                            <i data-lucide="refresh-cw" class="w-4 h-4" :class="syncing && 'animate-spin'"></i>
+                            <span x-text="syncing ? 'Syncing...' : 'Sync Library from GitHub'"></span>
                         </button>
+                        <a :href="githubUploadUrl()" target="_blank" rel="noopener noreferrer" class="text-slate-700 text-sm font-medium flex items-center gap-2 hover:bg-slate-50 p-2 rounded-lg transition-colors">
+                            <i data-lucide="github" class="w-4 h-4"></i> Upload an App Through GitHub
+                            <i data-lucide="external-link" class="w-3 h-3"></i>
+                        </a>
                         <button @click="clearData()" class="text-red-600 text-sm font-medium flex items-center gap-2 hover:bg-red-50 p-2 rounded-lg transition-colors">
                             <i data-lucide="trash" class="w-4 h-4"></i> Clear All Local Data
                         </button>
@@ -234,16 +251,21 @@
     </main>
 
     <script>
+        const DEFAULT_GITHUB_REPO = 'Petgabs/BZFLS';
+        const MAX_LOCAL_APP_BYTES = 2 * 1024 * 1024;
+
         function schoolCloud() {
             return {
                 currentView: 'library',
                 apps: [],
                 uploading: false,
+                syncing: false,
                 fileName: '',
                 fileContent: '',
+                fileReady: false,
+                fileReadId: 0,
                 githubConfig: {
-                    token: '',
-                    repo: ''
+                    repo: DEFAULT_GITHUB_REPO
                 },
                 newApp: {
                     name: '',
@@ -252,147 +274,250 @@
                 },
 
                 init() {
-                    const savedApps = localStorage.getItem('schoolcloud_apps');
-                    if (savedApps) this.apps = JSON.parse(savedApps);
-                    
-                    const savedConfig = localStorage.getItem('schoolcloud_github_config');
-                    if (savedConfig) this.githubConfig = JSON.parse(savedConfig);
-
-                    this.$nextTick(() => lucide.createIcons());
-                    
-                    this.$watch('currentView', () => {
-                        setTimeout(() => lucide.createIcons(), 50);
-                    });
-                },
-
-                saveSettings() {
-                    localStorage.setItem('schoolcloud_github_config', JSON.stringify(this.githubConfig));
-                    alert('Settings saved locally!');
-                },
-
-                async syncFromGithub() {
-                    if (!this.githubConfig.token || !this.githubConfig.repo) {
-                        alert('Please configure GitHub settings first!');
-                        this.currentView = 'settings';
-                        return;
+                    try {
+                        const savedApps = JSON.parse(localStorage.getItem('schoolcloud_apps') || '[]');
+                        if (Array.isArray(savedApps)) this.apps = savedApps;
+                    } catch (error) {
+                        console.warn('Ignoring invalid saved app data.', error);
+                        localStorage.removeItem('schoolcloud_apps');
                     }
 
                     try {
-                        // We first check the repository root to see if the apps folder exists
-                        const res = await fetch(`https://api.github.com/repos/${this.githubConfig.repo}/contents/apps`, {
-                            headers: { 
-                                'Authorization': `token ${this.githubConfig.token}`,
-                                'Accept': 'application/vnd.github.v3+json'
-                            }
-                        });
-                        
-                        if (res.status === 404) {
-                            alert('The "apps" folder was not found in your repository. You need to upload at least one app first!');
-                            return;
-                        }
+                        const savedConfig = JSON.parse(localStorage.getItem('schoolcloud_github_config') || '{}');
+                        const savedRepo = this.normalizeRepository(savedConfig.repo);
+                        if (savedRepo) this.githubConfig.repo = savedRepo;
+                    } catch (error) {
+                        console.warn('Ignoring invalid GitHub configuration.', error);
+                    }
 
-                        if (!res.ok) {
-                            const errorData = await res.json();
-                            throw new Error(errorData.message || `GitHub error: ${res.status}`);
-                        }
-                        
-                        const files = await res.json();
-                        
-                        if (!Array.isArray(files)) {
-                            throw new Error('Expected a list of files but received something else.');
-                        }
+                    // Rewrite legacy settings without any previously saved token.
+                    this.persistGithubConfig();
 
-                        const newApps = [];
-                        for (const file of files) {
-                            if (file.name.endsWith('.html')) {
-                                newApps.push({
-                                    id: file.sha,
-                                    name: file.name.split('-').slice(1).join('-').replace('.html', '') || file.name.replace('.html', ''),
-                                    teacherName: 'GitHub Cloud',
-                                    description: 'Synced from repository',
-                                    fileName: file.name,
-                                    githubPath: file.path,
-                                    downloadUrl: file.download_url,
-                                    createdAt: new Date().toISOString()
-                                });
+                    this.$nextTick(() => lucide.createIcons());
+                    this.$watch('currentView', () => {
+                        setTimeout(() => lucide.createIcons(), 50);
+                    });
+
+                    // Always refresh from GitHub on page load. Saved entries remain visible as
+                    // a fallback if the public API is temporarily unavailable.
+                    this.syncFromGithub({ silent: true });
+                },
+
+                normalizeRepository(value) {
+                    let repo = String(value || '').trim();
+                    repo = repo.replace(/^https:\/\/github\.com\//i, '').replace(/\/+$/, '');
+                    repo = repo.replace(/\.git$/i, '');
+                    return /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]+$/.test(repo) ? repo : '';
+                },
+
+                persistGithubConfig() {
+                    localStorage.setItem('schoolcloud_github_config', JSON.stringify({
+                        repo: this.githubConfig.repo
+                    }));
+                },
+
+                async saveSettings() {
+                    const repo = this.normalizeRepository(this.githubConfig.repo);
+                    if (!repo) {
+                        alert('Enter a valid public repository in Owner/Repo format.');
+                        return;
+                    }
+
+                    this.githubConfig.repo = repo;
+                    this.persistGithubConfig();
+                    await this.syncFromGithub();
+                },
+
+                githubUploadUrl() {
+                    const repo = this.normalizeRepository(this.githubConfig.repo) || DEFAULT_GITHUB_REPO;
+                    const safeRepo = repo.split('/').map(encodeURIComponent).join('/');
+                    return `https://github.com/${safeRepo}/upload/main/apps`;
+                },
+
+                async loadAppFiles(repo) {
+                    const hostname = globalThis.location?.hostname?.toLowerCase() || '';
+                    const onGithubPages = hostname.endsWith('.github.io');
+
+                    // GitHub Pages generates this manifest during every deployment. It avoids
+                    // GitHub's anonymous API rate limit when an entire class refreshes at once.
+                    if (repo === DEFAULT_GITHUB_REPO && onGithubPages) {
+                        try {
+                            const manifestResponse = await fetch(`./apps.json?refresh=${Date.now()}`, {
+                                cache: 'no-store'
+                            });
+                            if (manifestResponse.ok) {
+                                const manifestFiles = await manifestResponse.json();
+                                if (Array.isArray(manifestFiles)) return manifestFiles;
                             }
+                        } catch (error) {
+                            console.warn('The deployed app manifest was unavailable; using the GitHub API.', error);
                         }
-                        
-                        this.apps = newApps;
+                    }
+
+                    const [owner, repository] = repo.split('/');
+                    const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/contents/apps`;
+                    const response = await fetch(endpoint, {
+                        cache: 'no-store',
+                        headers: {
+                            'Accept': 'application/vnd.github+json',
+                            'X-GitHub-Api-Version': '2022-11-28'
+                        }
+                    });
+
+                    if (response.status === 404) {
+                        throw new Error('The public repository or its apps folder was not found.');
+                    }
+
+                    if (!response.ok) {
+                        let message = `GitHub returned ${response.status}`;
+                        try {
+                            const errorData = await response.json();
+                            if (errorData.message) message = errorData.message;
+                        } catch (_) {
+                            // Keep the status-based message for non-JSON responses.
+                        }
+                        throw new Error(message);
+                    }
+
+                    const files = await response.json();
+                    if (!Array.isArray(files)) {
+                        throw new Error('GitHub did not return an app list.');
+                    }
+                    return files;
+                },
+
+                async syncFromGithub(options = {}) {
+                    const silent = Boolean(options.silent);
+                    const repo = this.normalizeRepository(this.githubConfig.repo);
+
+                    if (!repo) {
+                        if (!silent) {
+                            alert('Enter a valid public repository in Owner/Repo format.');
+                            this.currentView = 'settings';
+                        }
+                        return;
+                    }
+
+                    if (this.syncing) return;
+                    this.syncing = true;
+
+                    try {
+                        const files = await this.loadAppFiles(repo);
+                        const githubApps = files
+                            .filter(file => file.type === 'file' && /\.html$/i.test(file.name))
+                            .sort((a, b) => b.name.localeCompare(a.name))
+                            .map(file => ({
+                                id: `github:${file.sha}`,
+                                name: file.name.replace(/^\d+-/, '').replace(/\.html$/i, '') || file.name,
+                                teacherName: 'GitHub Library',
+                                description: 'Shared through the public repository',
+                                fileName: file.name,
+                                githubPath: file.path,
+                                downloadUrl: file.download_url,
+                                createdAt: new Date().toISOString(),
+                                source: 'github'
+                            }));
+
+                        // GitHub becomes the source of truth when a browser-only app with the
+                        // same filename has been uploaded to the public repository.
+                        const githubFileNames = new Set(
+                            githubApps.map(app => app.fileName.toLowerCase())
+                        );
+                        const localApps = this.apps.filter(app =>
+                            app.source !== 'github' &&
+                            !(!app.content && app.downloadUrl) &&
+                            !githubFileNames.has(String(app.fileName || '').toLowerCase())
+                        );
+                        this.apps = [...localApps, ...githubApps];
                         this.saveApps();
-                        alert(`Sync complete! Found ${newApps.length} apps.`);
-                    } catch (err) {
-                        console.error(err);
-                        alert('Error syncing: ' + err.message + '\n\nPossible causes:\n1. Invalid Token\n2. Incorrect Repo name (should be username/repo)\n3. Internet connection issue');
+                        this.$nextTick(() => lucide.createIcons());
+
+                        if (!silent) {
+                            alert(`Sync complete! Found ${githubApps.length} public app${githubApps.length === 1 ? '' : 's'}.`);
+                            this.currentView = 'library';
+                        }
+                    } catch (error) {
+                        console.error('GitHub sync failed:', error);
+                        if (!silent) {
+                            alert('Unable to sync the public library: ' + error.message);
+                        }
+                    } finally {
+                        this.syncing = false;
                     }
                 },
 
-                handleFileChange(e) {
-                    const file = e.target.files[0];
+                handleFileChange(event) {
+                    const file = event.target.files[0];
+                    const readId = ++this.fileReadId;
+                    this.fileName = '';
+                    this.fileContent = '';
+                    this.fileReady = false;
+
                     if (!file) return;
+
+                    if (!/\.html$/i.test(file.name)) {
+                        event.target.value = '';
+                        alert('Please select an HTML file.');
+                        return;
+                    }
+
+                    if (file.size > MAX_LOCAL_APP_BYTES) {
+                        event.target.value = '';
+                        alert('The HTML file must be 2 MB or smaller for browser storage.');
+                        return;
+                    }
+
                     this.fileName = file.name;
-                    
                     const reader = new FileReader();
-                    reader.onload = (event) => {
-                        this.fileContent = event.target.result;
+                    reader.onload = loadEvent => {
+                        if (readId !== this.fileReadId) return;
+                        this.fileContent = String(loadEvent.target.result || '');
+                        this.fileReady = true;
+                    };
+                    reader.onerror = () => {
+                        if (readId !== this.fileReadId) return;
+                        this.fileName = '';
+                        this.fileContent = '';
+                        this.fileReady = false;
+                        alert('The selected file could not be read.');
                     };
                     reader.readAsText(file);
                 },
 
                 async handleUpload() {
+                    if (!this.fileReady || !this.fileName || !this.fileContent) {
+                        alert('Wait for a valid HTML file to finish loading.');
+                        return;
+                    }
+
                     this.uploading = true;
-                    
+                    const app = {
+                        id: globalThis.crypto?.randomUUID?.() || Date.now().toString(),
+                        name: this.newApp.name.trim(),
+                        teacherName: this.newApp.teacherName.trim(),
+                        description: this.newApp.description.trim(),
+                        fileName: this.fileName,
+                        content: this.fileContent,
+                        createdAt: new Date().toISOString(),
+                        source: 'local'
+                    };
+
                     try {
-                        const path = `apps/${Date.now()}-${this.fileName}`;
-                        const content = btoa(unescape(encodeURIComponent(this.fileContent)));
-                        
-                        let githubSuccess = false;
-                        
-                        if (this.githubConfig.token && this.githubConfig.repo) {
-                            const res = await fetch(`https://api.github.com/repos/${this.githubConfig.repo}/contents/${path}`, {
-                                method: 'PUT',
-                                headers: {
-                                    'Authorization': `token ${this.githubConfig.token}`,
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                    message: `Upload ${this.newApp.name} by ${this.newApp.teacherName}`,
-                                    content: content
-                                })
-                            });
-                            
-                            if (res.ok) {
-                                githubSuccess = true;
-                            } else {
-                                const errorData = await res.json();
-                                console.error('GitHub Upload Error:', errorData);
-                                throw new Error(`GitHub Upload Failed: ${errorData.message}`);
-                            }
-                        }
-
-                        const app = {
-                            id: Date.now().toString(),
-                            name: this.newApp.name,
-                            teacherName: this.newApp.teacherName,
-                            description: this.newApp.description,
-                            fileName: this.fileName || 'app.html',
-                            content: this.fileContent,
-                            githubPath: githubSuccess ? path : null,
-                            createdAt: new Date().toISOString()
-                        };
-
                         this.apps.unshift(app);
                         this.saveApps();
-                        
+
                         this.newApp = { name: '', teacherName: '', description: '' };
                         this.fileName = '';
                         this.fileContent = '';
-                        this.uploading = false;
+                        this.fileReady = false;
+                        this.fileReadId += 1;
+                        this.$refs.uploadForm.reset();
                         this.currentView = 'library';
-                        
-                        alert(githubSuccess ? 'App published to GitHub and local library!' : 'App saved to local library (GitHub config missing/failed).');
-                    } catch (err) {
-                        alert('Upload failed: ' + err.message);
+                        alert('App saved to this browser. Use “Upload File Through GitHub” to share it publicly.');
+                    } catch (error) {
+                        this.apps = this.apps.filter(item => item.id !== app.id);
+                        alert('The app could not be saved. Browser storage may be full.');
+                    } finally {
                         this.uploading = false;
                     }
                 },
@@ -403,53 +528,64 @@
 
                 async downloadApp(app) {
                     let content = app.content;
-                    
-                    // If content is not local, fetch from GitHub
+
                     if (!content && app.downloadUrl) {
                         try {
-                            const res = await fetch(app.downloadUrl);
-                            content = await res.text();
-                        } catch (err) {
-                            alert('Failed to download from GitHub: ' + err.message);
+                            const response = await fetch(app.downloadUrl, { cache: 'no-store' });
+                            if (!response.ok) {
+                                throw new Error(`Download returned ${response.status}`);
+                            }
+                            content = await response.text();
+                        } catch (error) {
+                            alert('Failed to download from GitHub: ' + error.message);
                             return;
                         }
                     }
 
+                    if (typeof content !== 'string' || !content) {
+                        alert('No HTML content is available for this app.');
+                        return;
+                    }
+
                     const blob = new Blob([content], { type: 'text/html' });
                     const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = app.fileName;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
+                    const anchor = document.createElement('a');
+                    anchor.href = url;
+                    anchor.download = app.fileName || 'app.html';
+                    document.body.appendChild(anchor);
+                    anchor.click();
+                    document.body.removeChild(anchor);
                     URL.revokeObjectURL(url);
                 },
 
                 deleteApp(id) {
-                    if (confirm('Are you sure you want to delete this app?')) {
-                        this.apps = this.apps.filter(a => a.id !== id);
+                    if (confirm('Remove this browser-only app?')) {
+                        this.apps = this.apps.filter(app => app.id !== id);
                         this.saveApps();
                     }
                 },
 
                 clearData() {
-                    if (confirm('Wipe everything? This cannot be undone.')) {
+                    if (confirm('Clear cached apps and reset the public repository setting?')) {
                         localStorage.removeItem('schoolcloud_apps');
+                        localStorage.removeItem('schoolcloud_github_config');
+                        localStorage.removeItem('schoolcloud_last_github_sync');
                         this.apps = [];
+                        this.githubConfig = { repo: DEFAULT_GITHUB_REPO };
                         this.currentView = 'library';
                     }
                 },
 
                 formatDate(isoString) {
                     const date = new Date(isoString);
-                    return date.toLocaleDateString(undefined, { 
-                        month: 'short', 
+                    if (Number.isNaN(date.getTime())) return 'Unknown date';
+                    return date.toLocaleDateString(undefined, {
+                        month: 'short',
                         day: 'numeric',
                         year: 'numeric'
                     });
                 }
-            }
+            };
         }
     </script>
 </body>
