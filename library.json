@@ -1,0 +1,23 @@
+{
+  "_comment": [
+    "Hand-curated metadata for files in /apps. Keys are the repository path",
+    "(or just the file name). Anything omitted is inferred from the file name",
+    "by assets/js/lib/metadata.js, so this file is entirely optional.",
+    "",
+    "Supported fields: subject, years (array), tags (array), description."
+  ],
+
+  "apps/Year 10 & 11  class schedule.pdf": {
+    "subject": "Administration",
+    "years": [10, 11],
+    "tags": ["timetable", "schedule", "term planning"],
+    "description": "Weekly class timetable for Year 10 and Year 11, including room allocations and period times."
+  },
+
+  "apps/16G.pdf": {
+    "subject": "Administration",
+    "years": [10],
+    "tags": ["class list", "form group"],
+    "description": "Form group 16G reference sheet."
+  }
+}

@@ -4,68 +4,71 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BZFLS-SchoolCloud - Offline Library</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Alpine.js for Reactivity -->
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        [x-cloak] { display: none !important; }
-        .line-clamp-3 {
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;  
-            overflow: hidden;
-        }
-    </style>
+    <meta name="description" content="Browse, preview and download classroom mini apps, documents and resources by subject and year group.">
+    <meta name="theme-color" content="#4f46e5">
+
+    <!-- Locally bundled styles and scripts: no third-party CDN is required,
+         so the site keeps working on restricted school networks and offline. -->
+    <link rel="stylesheet" href="./assets/css/app.css">
+    <script defer src="./assets/vendor/lucide.min.js"></script>
+    <script type="module" src="./assets/js/app.js"></script>
+    <script defer src="./assets/vendor/alpine.min.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans min-h-screen" x-data="schoolCloud()" x-init="init()">
 
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:bg-white focus:text-indigo-700 focus:px-4 focus:py-2 focus:rounded-lg focus:shadow-lg focus:ring-2 focus:ring-indigo-500">
+        Skip to main content
+    </a>
+
+    <!-- Offline banner -->
+    <div x-show="offline" x-cloak role="status"
+         class="bg-amber-500 text-white text-sm px-4 py-2 text-center font-medium">
+        <span class="inline-flex items-center gap-2">
+            <i data-lucide="wifi-off" class="w-4 h-4" aria-hidden="true"></i>
+            You are offline. Showing the last saved copy of the library.
+        </span>
+    </div>
+
     <!-- Header -->
     <header class="bg-white border-b sticky top-0 z-20">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <div class="flex items-center gap-2 cursor-pointer" @click="currentView = 'library'">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center gap-4">
+            <button type="button" class="flex items-center gap-2 focus-ring rounded-lg" @click="currentView = 'library'">
                 <div class="bg-indigo-600 p-2 rounded-lg text-white">
-                    <i data-lucide="file-code"></i>
+                    <i data-lucide="file-code" aria-hidden="true"></i>
                 </div>
-                <h1 class="text-xl font-bold tracking-tight">BZFLS-SchoolCloud <span class="text-xs font-normal text-slate-400 ml-1">v1.1</span></h1>
-            </div>
-            
+                <h1 class="text-xl font-bold tracking-tight">BZFLS-SchoolCloud <span class="text-xs font-normal text-slate-400 ml-1">v1.2</span></h1>
+            </button>
+
             <div class="flex items-center gap-3 sm:gap-4">
                 <!-- Visitor counter -->
                 <div class="hidden sm:flex items-center gap-2 bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full text-xs font-medium"
                      :title="stats.online ? 'Total visits to this site' : 'Visit counter is offline; showing this device only'">
-                    <i data-lucide="users" class="w-3.5 h-3.5 text-indigo-600"></i>
+                    <i data-lucide="users" class="w-3.5 h-3.5 text-indigo-600" aria-hidden="true"></i>
                     <span x-text="stats.loadingVisitors ? '…' : formatCount(stats.visitors)"></span>
                     <span class="text-slate-400">visits</span>
                 </div>
-                <button @click="openDashboard()"
-                        x-show="isAdmin"
-                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors">
-                    <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                <button type="button" @click="openDashboard()" x-show="isAdmin"
+                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4" aria-hidden="true"></i>
                     Dashboard
                 </button>
-                <button @click="currentView = 'upload'"
-                        x-show="isAdmin && currentView === 'library'"
-                        class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors shadow-sm">
-                    <i data-lucide="plus" class="w-4 h-4"></i>
+                <button type="button" @click="currentView = 'upload'" x-show="isAdmin && currentView === 'library'"
+                        class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors shadow-sm focus-ring">
+                    <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>
                     Admin Upload
                 </button>
-                <button @click="currentView = 'settings'"
-                        x-show="isAdmin"
-                        aria-label="Settings"
-                        class="p-2 text-slate-400 hover:text-slate-600 transition-colors">
-                    <i data-lucide="settings" class="w-5 h-5"></i>
+                <button type="button" @click="currentView = 'settings'" x-show="isAdmin" aria-label="Settings"
+                        class="p-2 text-slate-400 hover:text-slate-600 transition-colors focus-ring rounded-md">
+                    <i data-lucide="settings" class="w-5 h-5" aria-hidden="true"></i>
                 </button>
-                <button x-show="!isAdmin" @click="openLogin()"
-                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors">
-                    <i data-lucide="lock" class="w-4 h-4"></i>
+                <button type="button" x-show="!isAdmin" @click="openLogin()"
+                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
+                    <i data-lucide="lock" class="w-4 h-4" aria-hidden="true"></i>
                     Admin Sign In
                 </button>
-                <button x-show="isAdmin" @click="logout()"
-                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors">
-                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                <button type="button" x-show="isAdmin" @click="logout()"
+                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
+                    <i data-lucide="log-out" class="w-4 h-4" aria-hidden="true"></i>
                     Sign Out
                 </button>
             </div>
@@ -73,128 +76,367 @@
     </header>
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
+    <main id="main-content" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
         <!-- Welcome Section -->
-        <div x-show="currentView === 'library'" x-transition 
-             class="mb-12 grid grid-cols-1 md:grid-cols-3 gap-6 bg-indigo-900 text-white p-8 rounded-2xl shadow-xl">
+        <section x-show="currentView === 'library'" x-transition aria-labelledby="how-it-works"
+             class="mb-10 grid grid-cols-1 md:grid-cols-3 gap-6 bg-indigo-900 text-white p-8 rounded-2xl shadow-xl">
+            <h2 id="how-it-works" class="sr-only">How the library works</h2>
             <div class="flex flex-col gap-3">
                 <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="upload-cloud" class="w-5 h-5 text-indigo-100"></i>
+                    <i data-lucide="upload-cloud" class="w-5 h-5 text-indigo-100" aria-hidden="true"></i>
                 </div>
                 <h3 class="text-lg font-bold text-white">1. Share Apps</h3>
                 <p class="text-indigo-100 text-sm leading-relaxed">Teachers save mini HTML apps locally or share them through the public GitHub repository.</p>
             </div>
             <div class="flex flex-col gap-3">
                 <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="database" class="w-5 h-5 text-indigo-100"></i>
+                    <i data-lucide="search" class="w-5 h-5 text-indigo-100" aria-hidden="true"></i>
                 </div>
-                <h3 class="text-lg font-bold text-white">2. Sync the Library</h3>
-                <p class="text-indigo-100 text-sm leading-relaxed">Public apps sync from GitHub, while drafts stay in your browser.</p>
+                <h3 class="text-lg font-bold text-white">2. Find by Subject</h3>
+                <p class="text-indigo-100 text-sm leading-relaxed">Search the library or filter by subject and year group, then preview before downloading.</p>
             </div>
             <div class="flex flex-col gap-3">
                 <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="download" class="w-5 h-5 text-indigo-100"></i>
+                    <i data-lucide="download" class="w-5 h-5 text-indigo-100" aria-hidden="true"></i>
                 </div>
                 <h3 class="text-lg font-bold text-white">3. Offline Use</h3>
                 <p class="text-indigo-100 text-sm leading-relaxed">Students download apps to their device and use them anywhere.</p>
             </div>
-        </div>
+        </section>
 
         <!-- Library View -->
         <div x-show="currentView === 'library'" x-transition x-cloak>
-            <div class="mb-8">
+            <div class="mb-6">
                 <h2 class="text-3xl font-bold text-slate-900">Mini Apps Library</h2>
                 <p class="text-slate-600 mt-2">Browse the collection of educational tools for your classroom.</p>
             </div>
 
-            <!-- Empty State -->
-            <template x-if="apps.length === 0">
+            <!-- Search and filters -->
+            <section aria-labelledby="search-heading" class="mb-8">
+                <h3 id="search-heading" class="sr-only">Search and filter the library</h3>
+
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-5">
+                    <div class="flex flex-col lg:flex-row gap-3">
+                        <!-- Search box -->
+                        <div class="flex-1">
+                            <label for="library-search" class="sr-only">Search the library</label>
+                            <div class="relative">
+                                <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true"></i>
+                                <input id="library-search" type="search" x-model.debounce.250ms="filters.query"
+                                       placeholder="Search by name, subject, year group or file type…"
+                                       autocomplete="off"
+                                       aria-describedby="search-results-count"
+                                       class="w-full pl-9 pr-9 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
+                                <button type="button" x-show="filters.query" @click="filters.query = ''"
+                                        aria-label="Clear search"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700 rounded-md focus-ring">
+                                    <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Sort -->
+                        <div class="flex gap-3">
+                            <div>
+                                <label for="library-sort" class="sr-only">Sort results</label>
+                                <select id="library-sort" x-model="filters.sort"
+                                        class="h-full px-3 py-2.5 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <option value="relevance">Most relevant</option>
+                                    <option value="downloads">Most downloaded</option>
+                                    <option value="name">Name (A–Z)</option>
+                                    <option value="newest">Newest first</option>
+                                </select>
+                            </div>
+
+                            <button type="button" @click="showFilters = !showFilters"
+                                    :aria-expanded="showFilters ? 'true' : 'false'"
+                                    aria-controls="filter-panel"
+                                    class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
+                                <i data-lucide="sliders-horizontal" class="w-4 h-4" aria-hidden="true"></i>
+                                Filters
+                                <span x-show="hasActiveFilters" class="bg-indigo-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">on</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filter panel -->
+                    <div id="filter-panel" x-show="showFilters" x-transition x-cloak class="mt-5 pt-5 border-t border-slate-100 space-y-4">
+                        <!-- Kind -->
+                        <fieldset>
+                            <legend class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Type</legend>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" @click="setKind('app')" :aria-pressed="filters.kind === 'app' ? 'true' : 'false'"
+                                        :class="filters.kind === 'app' ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'"
+                                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ring-1 transition-colors focus-ring">
+                                    <i data-lucide="file-code" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    Mini apps
+                                    <span class="opacity-70" x-text="'(' + facets.apps + ')'"></span>
+                                </button>
+                                <button type="button" @click="setKind('document')" :aria-pressed="filters.kind === 'document' ? 'true' : 'false'"
+                                        :class="filters.kind === 'document' ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'"
+                                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ring-1 transition-colors focus-ring">
+                                    <i data-lucide="file-text" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    Documents
+                                    <span class="opacity-70" x-text="'(' + facets.documents + ')'"></span>
+                                </button>
+                            </div>
+                        </fieldset>
+
+                        <!-- Subject -->
+                        <fieldset x-show="subjectOptions.length > 0">
+                            <legend class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Subject</legend>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="subject in subjectOptions" :key="subject">
+                                    <button type="button" @click="setSubject(subject)"
+                                            :aria-pressed="filters.subject === subject ? 'true' : 'false'"
+                                            :class="filters.subject === subject ? 'bg-indigo-600 text-white ring-indigo-600' : subjectAccent(subject) + ' ring-1 hover:opacity-80'"
+                                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus-ring">
+                                        <span x-text="subject"></span>
+                                        <span class="opacity-70" x-text="'(' + (facets.subjects.get(subject) || 0) + ')'"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </fieldset>
+
+                        <!-- Year group -->
+                        <fieldset x-show="yearOptions.length > 0">
+                            <legend class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Year group</legend>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="year in yearOptions" :key="year">
+                                    <button type="button" @click="setYear(year)"
+                                            :aria-pressed="String(filters.year) === String(year) ? 'true' : 'false'"
+                                            :class="String(filters.year) === String(year) ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'"
+                                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ring-1 transition-colors focus-ring">
+                                        <span x-text="'Year ' + year"></span>
+                                        <span class="opacity-70" x-text="'(' + (facets.years.get(year) || 0) + ')'"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </fieldset>
+
+                        <div x-show="hasActiveFilters">
+                            <button type="button" @click="clearFilters()"
+                                    class="inline-flex items-center gap-1.5 text-sm text-indigo-600 font-medium hover:text-indigo-800 focus-ring rounded-md px-1 py-0.5">
+                                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                Clear all filters
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Result count, announced to screen readers -->
+                <p id="search-results-count" role="status" aria-live="polite"
+                   class="text-sm text-slate-500 mt-3"
+                   x-show="!loading.library">
+                    <span x-text="formatCount(resultCount)"></span>
+                    <span x-text="resultCount === 1 ? 'item' : 'items'"></span>
+                    <span x-show="hasActiveFilters" x-text="filterSummary"></span>
+                </p>
+            </section>
+
+            <!-- Error state -->
+            <div x-show="errors.library" x-cloak role="alert"
+                 class="mb-8 bg-red-50 border border-red-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+                <div class="flex items-start gap-3 flex-1">
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                    <div>
+                        <h3 class="font-semibold text-red-900">The library could not be refreshed</h3>
+                        <p class="text-sm text-red-700 mt-1" x-text="errors.library"></p>
+                        <p class="text-sm text-red-700 mt-1" x-show="usingCachedLibrary">
+                            You are seeing the last saved copy of the library.
+                        </p>
+                    </div>
+                </div>
+                <button type="button" @click="retryLoad()" :disabled="syncing" aria-label="Try loading the library again"
+                        class="inline-flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-60 transition-colors focus-ring flex-shrink-0">
+                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="syncing && 'animate-spin'" aria-hidden="true"></i>
+                    <span x-text="syncing ? 'Retrying…' : 'Try again'"></span>
+                </button>
+            </div>
+
+            <!-- Loading skeletons -->
+            <div x-show="loading.library && apps.length === 0" aria-hidden="true"
+                 class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <template x-for="n in 6" :key="n">
+                    <div class="bg-white rounded-xl border border-slate-200 p-6">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="skeleton h-5 w-2/3"></div>
+                            <div class="skeleton h-5 w-12"></div>
+                        </div>
+                        <div class="skeleton h-3 w-full mb-2"></div>
+                        <div class="skeleton h-3 w-5/6 mb-2"></div>
+                        <div class="skeleton h-3 w-3/4 mb-6"></div>
+                        <div class="flex gap-2 mb-5">
+                            <div class="skeleton h-6 w-20 rounded-full"></div>
+                            <div class="skeleton h-6 w-16 rounded-full"></div>
+                        </div>
+                        <div class="skeleton h-10 w-full rounded-lg"></div>
+                    </div>
+                </template>
+            </div>
+            <p x-show="loading.library && apps.length === 0" role="status" class="sr-only">Loading the library…</p>
+
+            <!-- Empty: nothing in the library at all -->
+            <template x-if="!loading.library && apps.length === 0 && !errors.library">
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-16 text-center">
                     <div class="bg-slate-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <i data-lucide="inbox" class="w-10 h-10 text-slate-400"></i>
+                        <i data-lucide="inbox" class="w-10 h-10 text-slate-400" aria-hidden="true"></i>
                     </div>
                     <h3 class="text-xl font-semibold text-slate-900">No files available</h3>
                     <p class="text-slate-500 mt-2 max-w-xs mx-auto">Upload an app or resource to start building your school library.</p>
                 </div>
             </template>
 
-            <!-- Mini apps -->
-            <div x-show="miniApps.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <template x-for="app in miniApps" :key="app.id">
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow group">
-                        <div class="p-6">
-                            <div class="flex justify-between items-start mb-4">
-                                <h3 class="text-lg font-bold text-slate-900 truncate pr-4" x-text="app.name"></h3>
-                                <span class="text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2 py-1 rounded">HTML5</span>
-                            </div>
-                            <p class="text-slate-600 text-sm line-clamp-3 mb-6 min-h-[4.5rem]" x-text="app.description || 'No description provided.'"></p>
-                            <div class="flex items-center gap-2 text-slate-400 text-xs mb-4">
-                                <i data-lucide="user" class="w-3 h-3"></i>
-                                <span x-text="'By ' + app.teacherName"></span>
-                                <span class="mx-1">•</span>
-                                <span x-text="formatDate(app.createdAt)"></span>
-                            </div>
-                            <div class="flex items-center gap-2 mb-5">
-                                <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-semibold"
-                                      :title="downloadLabel(app)">
-                                    <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i>
-                                    <span x-text="formatCount(downloadsOf(app))"></span>
-                                    <span class="font-normal" x-text="downloadsOf(app) === 1 ? 'download' : 'downloads'"></span>
-                                </span>
-                                <span x-show="stats.loadingDownloads" class="text-[10px] text-slate-400">updating…</span>
-                            </div>
-                            <div class="flex gap-2">
-                                <button @click="downloadApp(app)" class="flex-1 flex items-center justify-center gap-2 bg-slate-900 text-white py-2.5 rounded-lg hover:bg-slate-800 transition-colors">
-                                    <i data-lucide="download" class="w-4 h-4"></i> Download
-                                </button>
-                                <button x-show="isAdmin && app.source !== 'github'" @click="deleteApp(app.id)" aria-label="Remove local app" title="Remove this browser-only app" class="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                </button>
-                                <a x-show="isAdmin && app.source === 'github'" :href="githubDeleteUrl(app)" target="_blank" rel="noopener noreferrer" aria-label="Delete from GitHub" title="Delete from the public repository using your GitHub sign-in" class="p-2.5 flex items-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                                    <i data-lucide="cloud-off" class="w-4 h-4"></i>
-                                </a>
-                            </div>
-                        </div>
+            <!-- Empty: filters exclude everything -->
+            <template x-if="!loading.library && apps.length > 0 && resultCount === 0">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-16 text-center">
+                    <div class="bg-slate-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <i data-lucide="search-x" class="w-10 h-10 text-slate-400" aria-hidden="true"></i>
                     </div>
-                </template>
-            </div>
+                    <h3 class="text-xl font-semibold text-slate-900">No matching files</h3>
+                    <p class="text-slate-500 mt-2 max-w-sm mx-auto">
+                        Nothing in the library matches your search. Try a different word or clear the filters.
+                    </p>
+                    <button type="button" @click="clearFilters()"
+                            class="mt-6 inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors focus-ring">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4" aria-hidden="true"></i>
+                        Clear filters
+                    </button>
+                </div>
+            </template>
+
+            <!-- Mini apps -->
+            <section x-show="filteredMiniApps.length > 0" aria-labelledby="apps-heading">
+                <h3 id="apps-heading" class="text-xl font-bold text-slate-900 mb-4">Mini Apps</h3>
+                <ul role="list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <template x-for="app in filteredMiniApps" :key="app.id">
+                        <li class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                            <div class="p-6 flex flex-col flex-1">
+                                <div class="flex justify-between items-start gap-3 mb-3">
+                                    <h4 class="text-lg font-bold text-slate-900 break-words" x-text="app.name"></h4>
+                                    <span class="text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2 py-1 rounded flex-shrink-0">HTML5</span>
+                                </div>
+
+                                <!-- Structured metadata -->
+                                <div class="flex flex-wrap items-center gap-1.5 mb-3">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1"
+                                          :class="subjectAccent(app.meta.subject)" x-text="app.meta.subject"></span>
+                                    <span x-show="app.meta.years.length"
+                                          class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 ring-1 ring-slate-200"
+                                          x-text="formatYears(app.meta.years)"></span>
+                                    <template x-for="tag in app.meta.tags.slice(0, 2)" :key="tag">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-slate-50 text-slate-500 ring-1 ring-slate-200" x-text="'#' + tag"></span>
+                                    </template>
+                                </div>
+
+                                <p class="text-slate-600 text-sm line-clamp-3 mb-4 flex-1" x-text="app.description || 'No description provided.'"></p>
+
+                                <div class="flex flex-wrap items-center gap-2 text-slate-400 text-xs mb-4">
+                                    <span class="inline-flex items-center gap-1">
+                                        <i data-lucide="user" class="w-3 h-3" aria-hidden="true"></i>
+                                        <span x-text="app.teacherName"></span>
+                                    </span>
+                                    <span aria-hidden="true">•</span>
+                                    <span x-text="formatDate(app.createdAt)"></span>
+                                </div>
+
+                                <div class="flex items-center gap-2 mb-5">
+                                    <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-semibold"
+                                          :title="downloadLabel(app)">
+                                        <i data-lucide="download-cloud" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        <span x-text="formatCount(downloadsOf(app))"></span>
+                                        <span class="font-normal" x-text="downloadsOf(app) === 1 ? 'download' : 'downloads'"></span>
+                                    </span>
+                                    <span x-show="stats.loadingDownloads" class="text-[10px] text-slate-400">updating…</span>
+                                </div>
+
+                                <div class="flex gap-2">
+                                    <button type="button" x-show="canPreview(app)" @click="openPreview(app)"
+                                            :aria-label="'Preview ' + app.name"
+                                            class="flex-1 inline-flex items-center justify-center gap-2 border border-slate-300 text-slate-700 py-2.5 rounded-lg hover:bg-slate-50 transition-colors focus-ring">
+                                        <i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i> Preview
+                                    </button>
+                                    <button type="button" @click="downloadApp(app)"
+                                            :aria-label="'Download ' + app.name"
+                                            class="flex-1 inline-flex items-center justify-center gap-2 bg-slate-900 text-white py-2.5 rounded-lg hover:bg-slate-800 transition-colors focus-ring">
+                                        <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i> Download
+                                    </button>
+                                    <button type="button" x-show="isAdmin && app.source !== 'github'" @click="deleteApp(app.id)"
+                                            aria-label="Remove this browser-only app" title="Remove this browser-only app"
+                                            class="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring">
+                                        <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                                    </button>
+                                    <a x-show="isAdmin && app.source === 'github'" :href="githubDeleteUrl(app)" target="_blank" rel="noopener noreferrer"
+                                       aria-label="Delete from GitHub" title="Delete from the public repository using your GitHub sign-in"
+                                       class="p-2.5 flex items-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring">
+                                        <i data-lucide="cloud-off" class="w-4 h-4" aria-hidden="true"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </li>
+                    </template>
+                </ul>
+            </section>
 
             <!-- Documents and resources -->
-            <section x-show="resources.length > 0" class="mt-12" aria-labelledby="resources-heading">
-                <div class="mb-6">
-                    <h2 id="resources-heading" class="text-2xl font-bold text-slate-900">Documents &amp; Resources</h2>
-                    <p class="text-slate-600 mt-1">Download classroom documents, spreadsheets and presentations.</p>
+            <section x-show="filteredResources.length > 0" class="mt-12" aria-labelledby="resources-heading">
+                <div class="mb-4">
+                    <h3 id="resources-heading" class="text-xl font-bold text-slate-900">Documents &amp; Resources</h3>
+                    <p class="text-slate-600 mt-1 text-sm">Preview or download classroom documents, spreadsheets and presentations.</p>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <template x-for="resource in resources" :key="resource.id">
-                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
-                            <div class="p-6">
-                                <div class="flex items-start justify-between gap-4 mb-5">
+                <ul role="list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <template x-for="resource in filteredResources" :key="resource.id">
+                        <li class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                            <div class="p-6 flex flex-col flex-1">
+                                <div class="flex items-start justify-between gap-4 mb-3">
                                     <div class="flex items-center gap-3 min-w-0">
                                         <div class="bg-amber-50 text-amber-700 p-2.5 rounded-lg flex-shrink-0">
-                                            <i :data-lucide="fileIcon(resource)" class="w-5 h-5"></i>
+                                            <i :data-lucide="fileIcon(resource)" class="w-5 h-5" aria-hidden="true"></i>
                                         </div>
-                                        <h3 class="font-bold text-slate-900 break-words" x-text="resource.name"></h3>
+                                        <h4 class="font-bold text-slate-900 break-words" x-text="resource.name"></h4>
                                     </div>
                                     <span class="text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 px-2 py-1 rounded flex-shrink-0" x-text="fileExtension(resource)"></span>
                                 </div>
-                                <p class="text-sm text-slate-500 mb-5" x-text="resource.description"></p>
+
+                                <div class="flex flex-wrap items-center gap-1.5 mb-3">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1"
+                                          :class="subjectAccent(resource.meta.subject)" x-text="resource.meta.subject"></span>
+                                    <span x-show="resource.meta.years.length"
+                                          class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 ring-1 ring-slate-200"
+                                          x-text="formatYears(resource.meta.years)"></span>
+                                    <template x-for="tag in resource.meta.tags.slice(0, 2)" :key="tag">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-slate-50 text-slate-500 ring-1 ring-slate-200" x-text="'#' + tag"></span>
+                                    </template>
+                                </div>
+
+                                <p class="text-sm text-slate-500 mb-4 line-clamp-3 flex-1" x-text="resource.description"></p>
+
                                 <div class="flex items-center gap-2 mb-5">
                                     <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-semibold" :title="downloadLabel(resource)">
-                                        <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i>
+                                        <i data-lucide="download-cloud" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                         <span x-text="formatCount(downloadsOf(resource))"></span>
                                         <span class="font-normal" x-text="downloadsOf(resource) === 1 ? 'download' : 'downloads'"></span>
                                     </span>
                                     <span x-show="stats.loadingDownloads" class="text-[10px] text-slate-400">updating…</span>
                                 </div>
-                                <button @click="downloadApp(resource)" class="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-2.5 rounded-lg hover:bg-slate-800 transition-colors">
-                                    <i data-lucide="download" class="w-4 h-4"></i> Download
-                                </button>
+
+                                <div class="flex gap-2">
+                                    <button type="button" x-show="canPreview(resource)" @click="openPreview(resource)"
+                                            :aria-label="'Preview ' + resource.name"
+                                            class="flex-1 inline-flex items-center justify-center gap-2 border border-slate-300 text-slate-700 py-2.5 rounded-lg hover:bg-slate-50 transition-colors focus-ring">
+                                        <i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i> Preview
+                                    </button>
+                                    <button type="button" @click="downloadApp(resource)"
+                                            :aria-label="'Download ' + resource.name"
+                                            class="flex-1 inline-flex items-center justify-center gap-2 bg-slate-900 text-white py-2.5 rounded-lg hover:bg-slate-800 transition-colors focus-ring">
+                                        <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i> Download
+                                    </button>
+                                </div>
                             </div>
-                        </div>
+                        </li>
                     </template>
-                </div>
+                </ul>
             </section>
         </div>
 
@@ -202,23 +444,32 @@
         <div x-show="isAdmin && currentView === 'dashboard'" x-transition x-cloak>
             <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
                 <div>
-                    <button @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors mb-3">
-                        <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                    <button type="button" @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors mb-3 focus-ring rounded-md">
+                        <i data-lucide="arrow-left" class="w-4 h-4" aria-hidden="true"></i>
                         Back to Library
                     </button>
                     <h2 class="text-3xl font-bold text-slate-900">Admin Dashboard</h2>
                     <p class="text-slate-600 mt-2">Live usage for the public library, shared across every device.</p>
                 </div>
-                <button @click="refreshStats()" :disabled="stats.loadingDownloads"
-                        class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-60 transition-colors shadow-sm">
-                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                <button type="button" @click="refreshStats()" :disabled="stats.loadingDownloads" aria-label="Refresh statistics"
+                        class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-60 transition-colors shadow-sm focus-ring">
+                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="stats.loadingDownloads && 'animate-spin'" aria-hidden="true"></i>
                     <span x-text="stats.loadingDownloads ? 'Refreshing…' : 'Refresh Stats'"></span>
                 </button>
             </div>
 
-            <div x-show="!stats.online" class="mb-6 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 text-sm">
-                <i data-lucide="wifi-off" class="w-4 h-4 mt-0.5"></i>
-                <span>The shared counter service is unreachable, so the numbers below come from this browser only. They will resync automatically when the service is back.</span>
+            <!-- Counter backend status -->
+            <div class="mb-6 flex items-start gap-3 rounded-xl p-4 text-sm"
+                 :class="stats.online ? 'bg-slate-50 border border-slate-200 text-slate-600' : 'bg-amber-50 border border-amber-200 text-amber-800'">
+                <i :data-lucide="stats.online ? 'database' : 'wifi-off'" class="w-4 h-4 mt-0.5" aria-hidden="true"></i>
+                <span x-show="stats.online">
+                    Counters are served by
+                    <strong x-text="stats.backend === 'supabase' ? 'the managed database' : (stats.backend === 'abacus' ? 'the legacy counter service' : 'this browser only')"></strong>.
+                </span>
+                <span x-show="!stats.online">
+                    Every counter backend is unreachable, so the numbers below come from this browser only.
+                    They will resync automatically when a backend is available.
+                </span>
             </div>
 
             <!-- Stat cards -->
@@ -226,7 +477,7 @@
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Visits</span>
-                        <i data-lucide="users" class="w-4 h-4 text-indigo-600"></i>
+                        <i data-lucide="users" class="w-4 h-4 text-indigo-600" aria-hidden="true"></i>
                     </div>
                     <p class="text-3xl font-bold text-slate-900" x-text="stats.loadingVisitors ? '…' : formatCount(stats.visitors)"></p>
                     <p class="text-xs text-slate-500 mt-1">Counted once per browser session</p>
@@ -234,7 +485,7 @@
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Downloads</span>
-                        <i data-lucide="download-cloud" class="w-4 h-4 text-emerald-600"></i>
+                        <i data-lucide="download-cloud" class="w-4 h-4 text-emerald-600" aria-hidden="true"></i>
                     </div>
                     <p class="text-3xl font-bold text-slate-900" x-text="formatCount(totalDownloads)"></p>
                     <p class="text-xs text-slate-500 mt-1">Across every app in the library</p>
@@ -242,15 +493,15 @@
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Public Files</span>
-                        <i data-lucide="cloud" class="w-4 h-4 text-sky-600"></i>
+                        <i data-lucide="cloud" class="w-4 h-4 text-sky-600" aria-hidden="true"></i>
                     </div>
-                    <p class="text-3xl font-bold text-slate-900" x-text="apps.length"></p>
+                    <p class="text-3xl font-bold text-slate-900" x-text="cloudAppCount"></p>
                     <p class="text-xs text-slate-500 mt-1">Apps and resources synced from GitHub</p>
                 </div>
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Browser-Only Apps</span>
-                        <i data-lucide="hard-drive" class="w-4 h-4 text-slate-500"></i>
+                        <i data-lucide="hard-drive" class="w-4 h-4 text-slate-500" aria-hidden="true"></i>
                     </div>
                     <p class="text-3xl font-bold text-slate-900" x-text="localAppCount"></p>
                     <p class="text-xs text-slate-500 mt-1">Drafts saved on this device</p>
@@ -268,21 +519,24 @@
                 </template>
                 <div x-show="miniApps.length > 0" class="overflow-x-auto">
                     <table class="min-w-full text-sm">
+                        <caption class="sr-only">Download totals for each mini app</caption>
                         <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
                             <tr>
-                                <th class="text-left font-semibold px-6 py-3">App</th>
-                                <th class="text-left font-semibold px-6 py-3 hidden sm:table-cell">Source</th>
-                                <th class="text-left font-semibold px-6 py-3">Downloads</th>
-                                <th class="text-left font-semibold px-6 py-3 hidden md:table-cell w-1/3">Share</th>
+                                <th scope="col" class="text-left font-semibold px-6 py-3">App</th>
+                                <th scope="col" class="text-left font-semibold px-6 py-3 hidden sm:table-cell">Subject</th>
+                                <th scope="col" class="text-left font-semibold px-6 py-3 hidden sm:table-cell">Source</th>
+                                <th scope="col" class="text-left font-semibold px-6 py-3">Downloads</th>
+                                <th scope="col" class="text-left font-semibold px-6 py-3 hidden md:table-cell w-1/4">Share</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
                             <template x-for="app in rankedMiniApps" :key="app.id">
                                 <tr class="hover:bg-slate-50">
-                                    <td class="px-6 py-4">
+                                    <th scope="row" class="px-6 py-4 text-left font-normal">
                                         <p class="font-medium text-slate-900" x-text="app.name"></p>
                                         <p class="text-xs text-slate-400" x-text="app.fileName"></p>
-                                    </td>
+                                    </th>
+                                    <td class="px-6 py-4 hidden sm:table-cell text-slate-600" x-text="app.meta.subject"></td>
                                     <td class="px-6 py-4 hidden sm:table-cell">
                                         <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
                                               :class="app.source === 'github' ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-600'"
@@ -290,9 +544,9 @@
                                     </td>
                                     <td class="px-6 py-4 font-semibold text-slate-900" x-text="formatCount(downloadsOf(app))"></td>
                                     <td class="px-6 py-4 hidden md:table-cell">
-                                        <div class="w-full bg-slate-100 rounded-full h-2">
-                                            <div class="bg-emerald-500 h-2 rounded-full transition-all"
-                                                 :style="`width: ${sharePercent(app)}%`"></div>
+                                        <div class="w-full bg-slate-100 rounded-full h-2" role="img"
+                                             :aria-label="sharePercent(app) + '% of all downloads'">
+                                            <div class="bg-emerald-500 h-2 rounded-full transition-all" :style="`width: ${sharePercent(app)}%`"></div>
                                         </div>
                                     </td>
                                 </tr>
@@ -309,34 +563,38 @@
                         <h3 class="font-bold text-slate-900">Documents &amp; Resources</h3>
                         <p class="text-xs text-slate-400 mt-0.5" x-text="resources.length + (resources.length === 1 ? ' downloadable file' : ' downloadable files')"></p>
                     </div>
-                    <i data-lucide="files" class="w-5 h-5 text-amber-600"></i>
+                    <i data-lucide="files" class="w-5 h-5 text-amber-600" aria-hidden="true"></i>
                 </div>
                 <template x-if="resources.length === 0">
                     <p class="px-6 py-10 text-center text-slate-500 text-sm">No documents or resources in the library yet.</p>
                 </template>
                 <div x-show="resources.length > 0" class="overflow-x-auto">
                     <table class="min-w-full text-sm">
+                        <caption class="sr-only">Download totals for each document and resource</caption>
                         <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
                             <tr>
-                                <th class="text-left font-semibold px-6 py-3">Resource</th>
-                                <th class="text-left font-semibold px-6 py-3">Type</th>
-                                <th class="text-left font-semibold px-6 py-3">Downloads</th>
-                                <th class="text-left font-semibold px-6 py-3 hidden md:table-cell w-1/3">Share</th>
+                                <th scope="col" class="text-left font-semibold px-6 py-3">Resource</th>
+                                <th scope="col" class="text-left font-semibold px-6 py-3 hidden sm:table-cell">Subject</th>
+                                <th scope="col" class="text-left font-semibold px-6 py-3">Type</th>
+                                <th scope="col" class="text-left font-semibold px-6 py-3">Downloads</th>
+                                <th scope="col" class="text-left font-semibold px-6 py-3 hidden md:table-cell w-1/4">Share</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
-                            <template x-for="resource in rankedResources" :key="resource.id">
+                            <template x-for="resource in resources" :key="resource.id">
                                 <tr class="hover:bg-slate-50">
-                                    <td class="px-6 py-4">
+                                    <th scope="row" class="px-6 py-4 text-left font-normal">
                                         <p class="font-medium text-slate-900" x-text="resource.name"></p>
                                         <p class="text-xs text-slate-400" x-text="resource.fileName"></p>
-                                    </td>
+                                    </th>
+                                    <td class="px-6 py-4 hidden sm:table-cell text-slate-600" x-text="resource.meta.subject"></td>
                                     <td class="px-6 py-4">
                                         <span class="text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 px-2 py-1 rounded" x-text="fileExtension(resource)"></span>
                                     </td>
                                     <td class="px-6 py-4 font-semibold text-slate-900" x-text="formatCount(downloadsOf(resource))"></td>
                                     <td class="px-6 py-4 hidden md:table-cell">
-                                        <div class="w-full bg-slate-100 rounded-full h-2">
+                                        <div class="w-full bg-slate-100 rounded-full h-2" role="img"
+                                             :aria-label="sharePercent(resource) + '% of all downloads'">
                                             <div class="bg-amber-500 h-2 rounded-full transition-all" :style="`width: ${sharePercent(resource)}%`"></div>
                                         </div>
                                     </td>
@@ -352,72 +610,97 @@
         <div x-show="isAdmin && currentView === 'upload'" x-transition x-cloak class="max-w-2xl mx-auto">
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
                 <div class="flex items-center justify-between mb-8">
-                    <button @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors">
-                        <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                    <button type="button" @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors focus-ring rounded-md">
+                        <i data-lucide="arrow-left" class="w-4 h-4" aria-hidden="true"></i>
                         Back to Library
                     </button>
                     <h2 class="text-2xl font-bold">Add Mini App <span class="text-xs font-normal text-slate-400">Admin</span></h2>
                 </div>
 
                 <div class="bg-blue-50 border border-blue-100 p-4 rounded-lg mb-6 flex gap-3">
-                    <i data-lucide="info" class="w-5 h-5 text-blue-500 flex-shrink-0"></i>
+                    <i data-lucide="info" class="w-5 h-5 text-blue-500 flex-shrink-0" aria-hidden="true"></i>
                     <p class="text-sm text-blue-700">Saving here keeps the app in this browser. To share it with everyone, use the GitHub upload link below and upload the same HTML file.</p>
                 </div>
 
                 <form x-ref="uploadForm" @submit.prevent="handleUpload" class="space-y-6">
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">App Name</label>
-                        <input type="text" x-model="newApp.name" required placeholder="e.g., Periodic Table Explorer"
-                               class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Teacher Name</label>
-                        <input type="text" x-model="newApp.teacherName" required placeholder="Your name"
+                        <label for="app-name" class="block text-sm font-medium text-slate-700 mb-1">App Name</label>
+                        <input id="app-name" type="text" x-model="newApp.name" required placeholder="e.g., Periodic Table Explorer"
                                class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                        <textarea x-model="newApp.description" rows="3" placeholder="Explain what this tool does..."
+                        <label for="app-teacher" class="block text-sm font-medium text-slate-700 mb-1">Teacher Name</label>
+                        <input id="app-teacher" type="text" x-model="newApp.teacherName" required placeholder="Your name"
+                               class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
+                    </div>
+
+                    <div>
+                        <label for="app-description" class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                        <textarea id="app-description" x-model="newApp.description" rows="3" placeholder="Explain what this tool does..."
                                   class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"></textarea>
                     </div>
 
+                    <!-- Structured metadata -->
+                    <fieldset class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <legend class="text-sm font-medium text-slate-700 mb-2">Metadata <span class="text-slate-400 font-normal">(optional — guessed from the file name when blank)</span></legend>
+                        <div>
+                            <label for="app-subject" class="block text-xs font-medium text-slate-500 mb-1">Subject</label>
+                            <input id="app-subject" type="text" x-model="newApp.subject" placeholder="Mathematics" list="subject-suggestions"
+                                   class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <datalist id="subject-suggestions">
+                                <template x-for="subject in subjectOptions" :key="subject">
+                                    <option :value="subject"></option>
+                                </template>
+                            </datalist>
+                        </div>
+                        <div>
+                            <label for="app-years" class="block text-xs font-medium text-slate-500 mb-1">Year groups</label>
+                            <input id="app-years" type="text" x-model="newApp.years" placeholder="10, 11"
+                                   class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                        </div>
+                        <div>
+                            <label for="app-tags" class="block text-xs font-medium text-slate-500 mb-1">Tags</label>
+                            <input id="app-tags" type="text" x-model="newApp.tags" placeholder="revision, quiz"
+                                   class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                        </div>
+                    </fieldset>
+
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">HTML File</label>
+                        <label for="app-file" class="block text-sm font-medium text-slate-700 mb-1">HTML File</label>
                         <div class="mt-1 relative border-2 border-slate-200 border-dashed rounded-xl p-8 text-center hover:border-indigo-400 transition-colors">
-                            <input type="file" @change="handleFileChange" accept=".html" required 
+                            <input id="app-file" type="file" @change="handleFileChange" accept=".html" required
                                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
                             <div class="space-y-2">
-                                <i data-lucide="file-up" class="mx-auto h-12 w-12 text-slate-300"></i>
+                                <i data-lucide="file-up" class="mx-auto h-12 w-12 text-slate-300" aria-hidden="true"></i>
                                 <div class="text-sm text-slate-600">
                                     <span class="font-semibold text-indigo-600">Click to upload</span> or drag and drop
                                 </div>
-                                <p class="text-xs text-slate-400" x-text="fileName ? 'Selected: ' + fileName : 'Support only .html files'"></p>
+                                <p class="text-xs text-slate-400" x-text="fileName ? 'Selected: ' + fileName : 'Supports .html files only'"></p>
                             </div>
                         </div>
                     </div>
 
                     <button type="submit" :disabled="uploading || !fileReady"
-                            class="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3.5 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-lg shadow-indigo-100">
+                            class="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3.5 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-lg shadow-indigo-100 focus-ring">
                         <span x-show="!uploading" class="flex items-center gap-2">
-                            <i data-lucide="save" class="w-5 h-5"></i> Save to This Browser
+                            <i data-lucide="save" class="w-5 h-5" aria-hidden="true"></i> Save to This Browser
                         </span>
                         <span x-show="uploading" class="flex items-center gap-2">
-                            <svg class="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <svg class="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                             Saving...
                         </span>
                     </button>
 
                     <div class="relative py-1">
-                        <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+                        <div class="absolute inset-0 flex items-center" aria-hidden="true"><div class="w-full border-t border-slate-200"></div></div>
                         <div class="relative flex justify-center"><span class="bg-white px-3 text-xs uppercase tracking-wide text-slate-400">Share publicly</span></div>
                     </div>
 
                     <a :href="githubUploadUrl()" target="_blank" rel="noopener noreferrer"
-                       class="w-full flex items-center justify-center gap-2 border border-slate-300 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-50 transition-colors">
-                        <i data-lucide="github" class="w-5 h-5"></i> Upload File Through GitHub
-                        <i data-lucide="external-link" class="w-4 h-4"></i>
+                       class="w-full flex items-center justify-center gap-2 border border-slate-300 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-50 transition-colors focus-ring">
+                        <i data-lucide="github" class="w-5 h-5" aria-hidden="true"></i> Upload File Through GitHub
+                        <i data-lucide="external-link" class="w-4 h-4" aria-hidden="true"></i>
                     </a>
                 </form>
             </div>
@@ -427,14 +710,14 @@
         <div x-show="isAdmin && currentView === 'settings'" x-transition x-cloak class="max-w-2xl mx-auto">
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
                 <div class="flex items-center justify-between mb-8">
-                    <button @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors">
-                        <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
+                    <button type="button" @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors focus-ring rounded-md">
+                        <i data-lucide="arrow-left" class="w-4 h-4" aria-hidden="true"></i> Back
                     </button>
                     <h2 class="text-2xl font-bold">Cloud Settings</h2>
                 </div>
 
                 <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-lg mb-8 flex gap-3">
-                    <i data-lucide="shield-check" class="w-5 h-5 text-emerald-600 flex-shrink-0"></i>
+                    <i data-lucide="shield-check" class="w-5 h-5 text-emerald-600 flex-shrink-0" aria-hidden="true"></i>
                     <p class="text-sm text-emerald-800">Public mode reads apps without a Personal Access Token. Credentials are never embedded in the site or saved in browser storage.</p>
                 </div>
 
@@ -445,52 +728,121 @@
                                class="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
                         <p class="text-xs text-slate-400 mt-1">The repository must be public and contain an <code>apps</code> folder.</p>
                     </div>
-                    
-                    <button @click="saveSettings()" :disabled="syncing" class="w-full bg-slate-900 text-white py-2 rounded-lg font-bold hover:bg-slate-800 transition-colors disabled:opacity-50">
+
+                    <button type="button" @click="saveSettings()" :disabled="syncing" class="w-full bg-slate-900 text-white py-2 rounded-lg font-bold hover:bg-slate-800 transition-colors disabled:opacity-50 focus-ring">
                         Save and Sync
                     </button>
 
                     <div class="pt-4 border-t flex flex-col gap-2">
-                        <button @click="syncFromGithub()" :disabled="syncing" class="text-indigo-600 text-sm font-medium flex items-center gap-2 hover:bg-indigo-50 p-2 rounded-lg transition-colors disabled:opacity-50">
-                            <i data-lucide="refresh-cw" class="w-4 h-4" :class="syncing && 'animate-spin'"></i>
+                        <button type="button" @click="syncFromGithub()" :disabled="syncing" aria-label="Sync the library from GitHub" class="text-indigo-600 text-sm font-medium flex items-center gap-2 hover:bg-indigo-50 p-2 rounded-lg transition-colors disabled:opacity-50 focus-ring">
+                            <i data-lucide="refresh-cw" class="w-4 h-4" :class="syncing && 'animate-spin'" aria-hidden="true"></i>
                             <span x-text="syncing ? 'Syncing...' : 'Sync Library from GitHub'"></span>
                         </button>
-                        <a :href="githubUploadUrl()" target="_blank" rel="noopener noreferrer" class="text-slate-700 text-sm font-medium flex items-center gap-2 hover:bg-slate-50 p-2 rounded-lg transition-colors">
-                            <i data-lucide="github" class="w-4 h-4"></i> Upload an App Through GitHub
-                            <i data-lucide="external-link" class="w-3 h-3"></i>
+                        <a :href="githubUploadUrl()" target="_blank" rel="noopener noreferrer" class="text-slate-700 text-sm font-medium flex items-center gap-2 hover:bg-slate-50 p-2 rounded-lg transition-colors focus-ring">
+                            <i data-lucide="github" class="w-4 h-4" aria-hidden="true"></i> Upload an App Through GitHub
+                            <i data-lucide="external-link" class="w-3 h-3" aria-hidden="true"></i>
                         </a>
                     </div>
 
                     <div class="pt-4 border-t">
                         <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2 mb-1">
-                            <i data-lucide="hard-drive" class="w-4 h-4"></i> Local Cleanup
+                            <i data-lucide="hard-drive" class="w-4 h-4" aria-hidden="true"></i> Local Cleanup
                         </h3>
                         <p class="text-xs text-slate-400 mb-3">These actions only affect this browser. Nothing is removed from the public repository.</p>
                         <div class="flex flex-col gap-2">
-                            <button @click="clearLocalDrafts()" class="text-amber-700 text-sm font-medium flex items-center gap-2 hover:bg-amber-50 p-2 rounded-lg transition-colors">
-                                <i data-lucide="file-x" class="w-4 h-4"></i>
+                            <button type="button" @click="clearLocalDrafts()" class="text-amber-700 text-sm font-medium flex items-center gap-2 hover:bg-amber-50 p-2 rounded-lg transition-colors focus-ring">
+                                <i data-lucide="file-x" class="w-4 h-4" aria-hidden="true"></i>
                                 <span x-text="'Remove Browser-Only Apps (' + localAppCount + ')'"></span>
                             </button>
-                            <button @click="clearGithubCache()" class="text-amber-700 text-sm font-medium flex items-center gap-2 hover:bg-amber-50 p-2 rounded-lg transition-colors">
-                                <i data-lucide="cloud-off" class="w-4 h-4"></i>
+                            <button type="button" @click="clearGithubCache()" class="text-amber-700 text-sm font-medium flex items-center gap-2 hover:bg-amber-50 p-2 rounded-lg transition-colors focus-ring">
+                                <i data-lucide="cloud-off" class="w-4 h-4" aria-hidden="true"></i>
                                 <span x-text="'Clear Cached Cloud Entries (' + cloudAppCount + ')'"></span>
                             </button>
-                            <button @click="clearData()" class="text-red-600 text-sm font-medium flex items-center gap-2 hover:bg-red-50 p-2 rounded-lg transition-colors">
-                                <i data-lucide="trash" class="w-4 h-4"></i> Clear All Local Data
+                            <button type="button" @click="clearData()" class="text-red-600 text-sm font-medium flex items-center gap-2 hover:bg-red-50 p-2 rounded-lg transition-colors focus-ring">
+                                <i data-lucide="trash" class="w-4 h-4" aria-hidden="true"></i> Clear All Local Data
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+
+        <!-- Preview Modal -->
+        <div x-show="preview.open" x-cloak
+             class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4"
+             role="dialog" aria-modal="true" aria-labelledby="preview-title"
+             @keydown.escape.window="closePreview()">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden"
+                 @click.outside="closePreview()">
+                <div class="flex items-start justify-between gap-4 px-5 py-4 border-b border-slate-200">
+                    <div class="min-w-0">
+                        <h2 id="preview-title" class="font-bold text-slate-900 truncate" x-text="preview.item?.name || 'Preview'"></h2>
+                        <p class="text-xs text-slate-400 truncate">
+                            <span x-text="preview.item?.meta?.kind"></span>
+                            <span x-show="preview.item?.meta?.years?.length"> · <span x-text="formatYears(preview.item?.meta?.years || [])"></span></span>
+                            <span> · <span x-text="preview.item?.meta?.subject"></span></span>
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <button type="button" x-show="preview.item" @click="downloadApp(preview.item)"
+                                class="inline-flex items-center gap-2 bg-slate-900 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors focus-ring">
+                            <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i> Download
+                        </button>
+                        <button type="button" id="preview-close" @click="closePreview()" aria-label="Close preview"
+                                class="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors focus-ring">
+                            <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex-1 relative bg-slate-100">
+                    <!-- Preview loading -->
+                    <div x-show="loading.preview && !errors.preview" class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-100 z-10">
+                        <svg class="animate-spin h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        <p class="text-sm text-slate-500" role="status">Loading preview…</p>
+                    </div>
+
+                    <!-- Preview error -->
+                    <div x-show="errors.preview" class="absolute inset-0 flex flex-col items-center justify-center gap-3 p-8 text-center z-10" role="alert">
+                        <i data-lucide="alert-triangle" class="w-10 h-10 text-amber-500" aria-hidden="true"></i>
+                        <p class="text-slate-700 font-medium" x-text="errors.preview"></p>
+                        <button type="button" x-show="preview.item" @click="downloadApp(preview.item)"
+                                class="mt-2 inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 focus-ring">
+                            <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i> Download instead
+                        </button>
+                    </div>
+
+                    <template x-if="preview.open && preview.descriptor && !errors.preview">
+                        <iframe x-show="!errors.preview"
+                                :src="preview.descriptor.src || null"
+                                :srcdoc="preview.descriptor.srcdoc || null"
+                                :sandbox="preview.descriptor.sandbox"
+                                :title="preview.descriptor.label"
+                                @load="onPreviewLoad()"
+                                @error="onPreviewError()"
+                                referrerpolicy="no-referrer"
+                                class="w-full h-full border-0 bg-white"></iframe>
+                    </template>
+                </div>
+
+                <p class="px-5 py-2.5 text-[11px] text-slate-400 border-t border-slate-100 bg-white">
+                    Previews run in a sandboxed frame. Download the file for full functionality and offline use.
+                </p>
+            </div>
+        </div>
+
         <!-- Admin Sign In Modal -->
         <div x-show="showLogin" x-cloak
              class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4"
+             role="dialog" aria-modal="true" aria-labelledby="login-title"
              @keydown.escape.window="showLogin = false">
             <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm p-6" @click.outside="showLogin = false">
                 <div class="flex items-center gap-2 mb-1">
-                    <div class="bg-indigo-600 p-2 rounded-lg text-white"><i data-lucide="shield" class="w-4 h-4"></i></div>
-                    <h2 class="text-lg font-bold">Administrator Sign In</h2>
+                    <div class="bg-indigo-600 p-2 rounded-lg text-white"><i data-lucide="shield" class="w-4 h-4" aria-hidden="true"></i></div>
+                    <h2 id="login-title" class="text-lg font-bold">Administrator Sign In</h2>
                 </div>
                 <p class="text-xs text-slate-400 mb-5">Uploading, settings and deletion are restricted to the administrator.</p>
                 <form @submit.prevent="login()" class="space-y-4">
@@ -504,12 +856,12 @@
                         <input id="admin-pass" type="password" x-model="loginForm.password" autocomplete="current-password" required
                                class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
                     </div>
-                    <p x-show="loginError" x-text="loginError" class="text-sm text-red-600"></p>
+                    <p x-show="loginError" x-text="loginError" class="text-sm text-red-600" role="alert"></p>
                     <div class="flex gap-2 pt-1">
                         <button type="button" @click="showLogin = false"
-                                class="flex-1 border border-slate-300 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-50">Cancel</button>
-                        <button type="submit" :disabled="checkingLogin"
-                                class="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50">
+                                class="flex-1 border border-slate-300 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-50 focus-ring">Cancel</button>
+                        <button type="submit" :disabled="checkingLogin" aria-label="Sign in"
+                                class="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 focus-ring">
                             <span x-text="checkingLogin ? 'Checking...' : 'Sign In'"></span>
                         </button>
                     </div>
@@ -519,757 +871,14 @@
     </main>
 
     <script>
-        const DEFAULT_GITHUB_REPO = 'Petgabs/BZFLS';
-        const MAX_LOCAL_APP_BYTES = 2 * 1024 * 1024;
-        const SUPPORTED_FILE_PATTERN = /\.(?:html|pdf|docx?|xlsx?|pptx?)$/i;
-        const RESOURCE_TYPE_NAMES = {
-            pdf: 'PDF document',
-            doc: 'Word document',
-            docx: 'Word document',
-            xls: 'Excel spreadsheet',
-            xlsx: 'Excel spreadsheet',
-            ppt: 'PowerPoint presentation',
-            pptx: 'PowerPoint presentation'
-        };
-
-        // Administrator credentials. The password is never stored in plaintext:
-        // only the SHA-256 digest of `<SALT>::<username>::<password>` is present here,
-        // and no GitHub Personal Access Token is embedded anywhere in this site.
-        const ADMIN_USERNAME = 'Petgabs';
-        const ADMIN_HASH_SALT = 'BZFLS-SchoolCloud';
-        const ADMIN_PASSWORD_SHA256 =
-            '80c8d57968c9c07428ad7a68c1b899076a4df66de6c381ed0c2e9efe5aceb262';
-        const ADMIN_SESSION_KEY = 'schoolcloud_admin_session';
-
-        // ---------------------------------------------------------------
-        // Shared counters (visits + downloads)
-        //
-        // GitHub Pages is a static host, so the counts live in a free,
-        // token-less counter service (Abacus). Every visitor sees the same
-        // global numbers. If the service is unreachable the site silently
-        // falls back to a per-browser mirror in localStorage so the UI never
-        // breaks; the mirror is replaced by the shared value on the next
-        // successful call.
-        // ---------------------------------------------------------------
-        const COUNTER_BASE = 'https://abacus.jasoncameron.dev';
-        const COUNTER_NAMESPACE = 'bzfls-schoolcloud-petgabs';
-        const COUNTER_TIMEOUT_MS = 6000;
-        const COUNTER_MIRROR_KEY = 'schoolcloud_counter_mirror';
-        const VISIT_SESSION_KEY = 'schoolcloud_visit_counted';
-        const VISITOR_COUNTER_KEY = 'site-visits';
-
-        function readMirror() {
-            try {
-                const parsed = JSON.parse(localStorage.getItem(COUNTER_MIRROR_KEY) || '{}');
-                return parsed && typeof parsed === 'object' ? parsed : {};
-            } catch (error) {
-                return {};
-            }
-        }
-
-        function writeMirror(key, value) {
-            try {
-                const mirror = readMirror();
-                mirror[key] = value;
-                localStorage.setItem(COUNTER_MIRROR_KEY, JSON.stringify(mirror));
-            } catch (error) {
-                console.warn('Could not cache the counter locally.', error);
-            }
-        }
-
-        // Counter keys must be URL-safe and stable for the lifetime of an app.
-        function counterKeyFor(app) {
-            const base = String(app?.githubPath || app?.fileName || app?.id || 'unknown');
-            const slug = base
-                .toLowerCase()
-                .replace(/^apps\//, '')
-                .replace(/\.html$/, '')
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/^-+|-+$/g, '')
-                .slice(0, 60);
-            return `dl-${slug || 'unknown'}`;
-        }
-
-        async function counterRequest(action, key) {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), COUNTER_TIMEOUT_MS);
-            try {
-                const response = await fetch(
-                    `${COUNTER_BASE}/${action}/${encodeURIComponent(COUNTER_NAMESPACE)}/${encodeURIComponent(key)}`,
-                    { cache: 'no-store', signal: controller.signal }
-                );
-
-                let data = null;
-                try {
-                    data = await response.json();
-                } catch (error) {
-                    data = null;
-                }
-
-                // A counter that has never been hit yet simply does not exist. The
-                // service reports that as "Key not found" (sometimes with a 200),
-                // which means zero downloads rather than an outage.
-                const missing = /not\s*found/i.test(String(data?.error || ''));
-                if (response.status === 404 || missing) return 0;
-
-                if (!response.ok) throw new Error(`Counter service returned ${response.status}`);
-
-                const value = Number(data?.value);
-                if (!Number.isFinite(value)) throw new Error('Counter service returned an invalid value.');
-                writeMirror(key, value);
-                return value;
-            } finally {
-                clearTimeout(timer);
-            }
-        }
-
-        const counterApi = {
-            get: key => counterRequest('get', key),
-            hit: key => counterRequest('hit', key)
-        };
-
-        async function sha256Hex(text) {
-            if (!globalThis.crypto?.subtle) {
-                throw new Error('This browser does not support secure hashing (requires HTTPS).');
-            }
-            const data = new TextEncoder().encode(text);
-            const digest = await globalThis.crypto.subtle.digest('SHA-256', data);
-            return Array.from(new Uint8Array(digest))
-                .map(byte => byte.toString(16).padStart(2, '0'))
-                .join('');
-        }
-
-        // Constant-time-ish comparison to avoid trivial timing leaks.
-        function digestsMatch(a, b) {
-            if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
-            let diff = 0;
-            for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-            return diff === 0;
-        }
-
-        function schoolCloud() {
-            return {
-                currentView: 'library',
-                apps: [],
-                isAdmin: false,
-                showLogin: false,
-                checkingLogin: false,
-                loginError: '',
-                loginForm: { username: '', password: '' },
-                uploading: false,
-                syncing: false,
-                fileName: '',
-                fileContent: '',
-                fileReady: false,
-                fileReadId: 0,
-                githubConfig: {
-                    repo: DEFAULT_GITHUB_REPO
-                },
-                newApp: {
-                    name: '',
-                    teacherName: '',
-                    description: ''
-                },
-                stats: {
-                    visitors: 0,
-                    downloads: {},
-                    online: true,
-                    loadingVisitors: true,
-                    loadingDownloads: false,
-                    updatedAtLabel: 'never'
-                },
-
-                get totalDownloads() {
-                    return this.apps.reduce((sum, app) => sum + this.downloadsOf(app), 0);
-                },
-
-                get miniApps() {
-                    return this.apps.filter(app => this.fileExtension(app) === 'HTML');
-                },
-
-                get resources() {
-                    return this.apps.filter(app => this.fileExtension(app) !== 'HTML');
-                },
-
-                get rankedMiniApps() {
-                    return [...this.miniApps].sort((a, b) => this.downloadsOf(b) - this.downloadsOf(a));
-                },
-
-                get rankedResources() {
-                    return [...this.resources].sort((a, b) => this.downloadsOf(b) - this.downloadsOf(a));
-                },
-
-                get localAppCount() {
-                    return this.apps.filter(app => app.source !== 'github').length;
-                },
-
-                get cloudAppCount() {
-                    return this.apps.filter(app => app.source === 'github').length;
-                },
-
-                init() {
-                    try {
-                        this.isAdmin = sessionStorage.getItem(ADMIN_SESSION_KEY) === ADMIN_PASSWORD_SHA256;
-                    } catch (error) {
-                        console.warn('Session storage unavailable; admin must sign in each visit.', error);
-                    }
-
-                    try {
-                        const savedApps = JSON.parse(localStorage.getItem('schoolcloud_apps') || '[]');
-                        if (Array.isArray(savedApps)) this.apps = savedApps;
-                    } catch (error) {
-                        console.warn('Ignoring invalid saved app data.', error);
-                        localStorage.removeItem('schoolcloud_apps');
-                    }
-
-                    try {
-                        const savedConfig = JSON.parse(localStorage.getItem('schoolcloud_github_config') || '{}');
-                        const savedRepo = this.normalizeRepository(savedConfig.repo);
-                        if (savedRepo) this.githubConfig.repo = savedRepo;
-                    } catch (error) {
-                        console.warn('Ignoring invalid GitHub configuration.', error);
-                    }
-
-                    // Rewrite legacy settings without any previously saved token.
-                    this.persistGithubConfig();
-
-                    this.$nextTick(() => lucide.createIcons());
-                    this.$watch('currentView', () => {
-                        setTimeout(() => lucide.createIcons(), 50);
-                    });
-
-                    // Seed the counters from the local mirror so numbers render instantly,
-                    // then replace them with the shared totals.
-                    this.stats.downloads = readMirror();
-                    this.stats.visitors = Number(this.stats.downloads[VISITOR_COUNTER_KEY]) || 0;
-
-                    this.countVisit();
-
-                    // Always refresh from GitHub on page load. Saved entries remain visible as
-                    // a fallback if the public API is temporarily unavailable.
-                    this.syncFromGithub({ silent: true }).then(() => this.refreshStats());
-                },
-
-                // ---- Counters -------------------------------------------------
-
-                async countVisit() {
-                    this.stats.loadingVisitors = true;
-                    let alreadyCounted = false;
-                    try {
-                        alreadyCounted = sessionStorage.getItem(VISIT_SESSION_KEY) === '1';
-                    } catch (error) {
-                        console.warn('Session storage unavailable; this visit may be counted twice.', error);
-                    }
-
-                    try {
-                        // One increment per browser session, plain reads afterwards.
-                        this.stats.visitors = alreadyCounted
-                            ? await counterApi.get(VISITOR_COUNTER_KEY)
-                            : await counterApi.hit(VISITOR_COUNTER_KEY);
-                        this.stats.online = true;
-                        if (!alreadyCounted) {
-                            try {
-                                sessionStorage.setItem(VISIT_SESSION_KEY, '1');
-                            } catch (error) {
-                                /* Counting twice is preferable to failing here. */
-                            }
-                        }
-                    } catch (error) {
-                        console.warn('The shared visit counter is unavailable.', error);
-                        this.stats.online = false;
-                        if (!alreadyCounted) {
-                            this.stats.visitors = (Number(readMirror()[VISITOR_COUNTER_KEY]) || 0) + 1;
-                            writeMirror(VISITOR_COUNTER_KEY, this.stats.visitors);
-                        }
-                    } finally {
-                        this.stats.loadingVisitors = false;
-                        this.$nextTick(() => lucide.createIcons());
-                    }
-                },
-
-                downloadsOf(app) {
-                    return Number(this.stats.downloads[counterKeyFor(app)]) || 0;
-                },
-
-                sharePercent(app) {
-                    const total = this.totalDownloads;
-                    if (!total) return 0;
-                    return Math.round((this.downloadsOf(app) / total) * 100);
-                },
-
-                async refreshStats() {
-                    if (this.stats.loadingDownloads) return;
-                    this.stats.loadingDownloads = true;
-                    let anyFailure = false;
-
-                    try {
-                        const results = await Promise.all(this.apps.map(async app => {
-                            const key = counterKeyFor(app);
-                            try {
-                                return [key, await counterApi.get(key)];
-                            } catch (error) {
-                                anyFailure = true;
-                                return [key, Number(readMirror()[key]) || 0];
-                            }
-                        }));
-
-                        const downloads = { ...this.stats.downloads };
-                        results.forEach(([key, value]) => { downloads[key] = value; });
-                        this.stats.downloads = downloads;
-
-                        try {
-                            this.stats.visitors = await counterApi.get(VISITOR_COUNTER_KEY);
-                        } catch (error) {
-                            anyFailure = true;
-                        }
-
-                        this.stats.online = !anyFailure;
-                        this.stats.updatedAtLabel = new Date().toLocaleTimeString();
-                    } finally {
-                        this.stats.loadingDownloads = false;
-                        this.$nextTick(() => lucide.createIcons());
-                    }
-                },
-
-                async recordDownload(app) {
-                    const key = counterKeyFor(app);
-                    // Optimistic update keeps the card responsive on slow networks.
-                    this.stats.downloads = { ...this.stats.downloads, [key]: this.downloadsOf(app) + 1 };
-                    try {
-                        const value = await counterApi.hit(key);
-                        this.stats.downloads = { ...this.stats.downloads, [key]: value };
-                        this.stats.online = true;
-                    } catch (error) {
-                        console.warn('The shared download counter is unavailable.', error);
-                        this.stats.online = false;
-                        writeMirror(key, this.stats.downloads[key]);
-                    } finally {
-                        this.$nextTick(() => lucide.createIcons());
-                    }
-                },
-
-                openDashboard() {
-                    if (!this.requireAdmin()) return;
-                    this.currentView = 'dashboard';
-                    this.refreshStats();
-                },
-
-                formatCount(value) {
-                    const number = Number(value) || 0;
-                    return number.toLocaleString();
-                },
-
-                fileExtension(item) {
-                    const match = String(item?.fileName || '').match(/\.([^.]+)$/);
-                    return (match?.[1] || 'file').toUpperCase();
-                },
-
-                fileIcon(item) {
-                    const extension = this.fileExtension(item).toLowerCase();
-                    if (extension === 'pdf') return 'file-text';
-                    if (['doc', 'docx'].includes(extension)) return 'file-type-2';
-                    if (['xls', 'xlsx'].includes(extension)) return 'sheet';
-                    if (['ppt', 'pptx'].includes(extension)) return 'presentation';
-                    return 'file';
-                },
-
-                downloadLabel(item) {
-                    const count = this.downloadsOf(item);
-                    return `${count} ${count === 1 ? 'download' : 'downloads'}`;
-                },
-
-                normalizeRepository(value) {
-                    let repo = String(value || '').trim();
-                    repo = repo.replace(/^https:\/\/github\.com\//i, '').replace(/\/+$/, '');
-                    repo = repo.replace(/\.git$/i, '');
-                    return /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]+$/.test(repo) ? repo : '';
-                },
-
-                persistGithubConfig() {
-                    localStorage.setItem('schoolcloud_github_config', JSON.stringify({
-                        repo: this.githubConfig.repo
-                    }));
-                },
-
-                async saveSettings() {
-                    if (!this.requireAdmin()) return;
-                    const repo = this.normalizeRepository(this.githubConfig.repo);
-                    if (!repo) {
-                        alert('Enter a valid public repository in Owner/Repo format.');
-                        return;
-                    }
-
-                    this.githubConfig.repo = repo;
-                    this.persistGithubConfig();
-                    await this.syncFromGithub();
-                },
-
-                githubUploadUrl() {
-                    const repo = this.normalizeRepository(this.githubConfig.repo) || DEFAULT_GITHUB_REPO;
-                    const safeRepo = repo.split('/').map(encodeURIComponent).join('/');
-                    return `https://github.com/${safeRepo}/upload/main/apps`;
-                },
-
-                async loadAppFiles(repo) {
-                    const hostname = globalThis.location?.hostname?.toLowerCase() || '';
-                    const onGithubPages = hostname.endsWith('.github.io');
-
-                    // GitHub Pages generates this manifest during every deployment. It avoids
-                    // GitHub's anonymous API rate limit when an entire class refreshes at once.
-                    if (repo === DEFAULT_GITHUB_REPO && onGithubPages) {
-                        try {
-                            const manifestResponse = await fetch(`./apps.json?refresh=${Date.now()}`, {
-                                cache: 'no-store'
-                            });
-                            if (manifestResponse.ok) {
-                                const manifestFiles = await manifestResponse.json();
-                                if (Array.isArray(manifestFiles)) return manifestFiles;
-                            }
-                        } catch (error) {
-                            console.warn('The deployed app manifest was unavailable; using the GitHub API.', error);
-                        }
-                    }
-
-                    const [owner, repository] = repo.split('/');
-                    const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/contents/apps`;
-                    const response = await fetch(endpoint, {
-                        cache: 'no-store',
-                        headers: {
-                            'Accept': 'application/vnd.github+json',
-                            'X-GitHub-Api-Version': '2022-11-28'
-                        }
-                    });
-
-                    if (response.status === 404) {
-                        throw new Error('The public repository or its apps folder was not found.');
-                    }
-
-                    if (!response.ok) {
-                        let message = `GitHub returned ${response.status}`;
-                        try {
-                            const errorData = await response.json();
-                            if (errorData.message) message = errorData.message;
-                        } catch (_) {
-                            // Keep the status-based message for non-JSON responses.
-                        }
-                        throw new Error(message);
-                    }
-
-                    const files = await response.json();
-                    if (!Array.isArray(files)) {
-                        throw new Error('GitHub did not return an app list.');
-                    }
-                    return files;
-                },
-
-                async syncFromGithub(options = {}) {
-                    const silent = Boolean(options.silent);
-                    const repo = this.normalizeRepository(this.githubConfig.repo);
-
-                    if (!repo) {
-                        if (!silent) {
-                            alert('Enter a valid public repository in Owner/Repo format.');
-                            if (this.isAdmin) this.currentView = 'settings';
-                        }
-                        return;
-                    }
-
-                    if (this.syncing) return;
-                    this.syncing = true;
-
-                    try {
-                        const files = await this.loadAppFiles(repo);
-                        const githubApps = files
-                            .filter(file => file.type === 'file' && SUPPORTED_FILE_PATTERN.test(file.name))
-                            .sort((a, b) => b.name.localeCompare(a.name))
-                            .map(file => {
-                                const extension = file.name.split('.').pop().toLowerCase();
-                                const isResource = extension !== 'html' && extension !== 'htm';
-                                return {
-                                    id: `github:${file.sha}`,
-                                    name: file.name.replace(/^\d+-/, '').replace(SUPPORTED_FILE_PATTERN, '') || file.name,
-                                    teacherName: 'GitHub Library',
-                                    description: isResource
-                                        ? `${RESOURCE_TYPE_NAMES[extension] || 'Classroom resource'} shared through the public repository`
-                                        : 'Shared through the public repository',
-                                    fileName: file.name,
-                                    githubPath: file.path,
-                                    downloadUrl: file.download_url,
-                                    createdAt: new Date().toISOString(),
-                                    source: 'github'
-                                };
-                            });
-
-                        // GitHub becomes the source of truth when a browser-only app with the
-                        // same filename has been uploaded to the public repository.
-                        const githubFileNames = new Set(
-                            githubApps.map(app => app.fileName.toLowerCase())
-                        );
-                        const localApps = this.apps.filter(app =>
-                            app.source !== 'github' &&
-                            !(!app.content && app.downloadUrl) &&
-                            !githubFileNames.has(String(app.fileName || '').toLowerCase())
-                        );
-                        this.apps = [...localApps, ...githubApps];
-                        this.saveApps();
-                        this.refreshStats();
-                        this.$nextTick(() => lucide.createIcons());
-
-                        if (!silent) {
-                            alert(`Sync complete! Found ${githubApps.length} public app${githubApps.length === 1 ? '' : 's'}.`);
-                            this.currentView = 'library';
-                        }
-                    } catch (error) {
-                        console.error('GitHub sync failed:', error);
-                        if (!silent) {
-                            alert('Unable to sync the public library: ' + error.message);
-                        }
-                    } finally {
-                        this.syncing = false;
-                    }
-                },
-
-                handleFileChange(event) {
-                    const file = event.target.files[0];
-                    const readId = ++this.fileReadId;
-                    this.fileName = '';
-                    this.fileContent = '';
-                    this.fileReady = false;
-
-                    if (!file) return;
-
-                    if (!/\.html$/i.test(file.name)) {
-                        event.target.value = '';
-                        alert('Please select an HTML file.');
-                        return;
-                    }
-
-                    if (file.size > MAX_LOCAL_APP_BYTES) {
-                        event.target.value = '';
-                        alert('The HTML file must be 2 MB or smaller for browser storage.');
-                        return;
-                    }
-
-                    this.fileName = file.name;
-                    const reader = new FileReader();
-                    reader.onload = loadEvent => {
-                        if (readId !== this.fileReadId) return;
-                        this.fileContent = String(loadEvent.target.result || '');
-                        this.fileReady = true;
-                    };
-                    reader.onerror = () => {
-                        if (readId !== this.fileReadId) return;
-                        this.fileName = '';
-                        this.fileContent = '';
-                        this.fileReady = false;
-                        alert('The selected file could not be read.');
-                    };
-                    reader.readAsText(file);
-                },
-
-                async handleUpload() {
-                    if (!this.requireAdmin()) return;
-                    if (!this.fileReady || !this.fileName || !this.fileContent) {
-                        alert('Wait for a valid HTML file to finish loading.');
-                        return;
-                    }
-
-                    this.uploading = true;
-                    const app = {
-                        id: globalThis.crypto?.randomUUID?.() || Date.now().toString(),
-                        name: this.newApp.name.trim(),
-                        teacherName: this.newApp.teacherName.trim(),
-                        description: this.newApp.description.trim(),
-                        fileName: this.fileName,
-                        content: this.fileContent,
-                        createdAt: new Date().toISOString(),
-                        source: 'local'
-                    };
-
-                    try {
-                        this.apps.unshift(app);
-                        this.saveApps();
-
-                        this.newApp = { name: '', teacherName: '', description: '' };
-                        this.fileName = '';
-                        this.fileContent = '';
-                        this.fileReady = false;
-                        this.fileReadId += 1;
-                        this.$refs.uploadForm.reset();
-                        this.currentView = 'library';
-                        alert('App saved to this browser. Use “Upload File Through GitHub” to share it publicly.');
-                    } catch (error) {
-                        this.apps = this.apps.filter(item => item.id !== app.id);
-                        alert('The app could not be saved. Browser storage may be full.');
-                    } finally {
-                        this.uploading = false;
-                    }
-                },
-
-                saveApps() {
-                    localStorage.setItem('schoolcloud_apps', JSON.stringify(this.apps));
-                },
-
-                async downloadApp(app) {
-                    let blob = null;
-
-                    if (typeof app.content === 'string' && app.content) {
-                        blob = new Blob([app.content], { type: 'text/html' });
-                    } else if (app.downloadUrl) {
-                        try {
-                            const response = await fetch(app.downloadUrl, { cache: 'no-store' });
-                            if (!response.ok) throw new Error(`Download returned ${response.status}`);
-                            // Keep binary resources byte-for-byte intact. Reading PDFs or Office
-                            // documents as text corrupts them before the browser saves the file.
-                            blob = await response.blob();
-                        } catch (error) {
-                            alert('Failed to download from GitHub: ' + error.message);
-                            return;
-                        }
-                    }
-
-                    if (!blob) {
-                        alert('No downloadable content is available for this file.');
-                        return;
-                    }
-
-                    const url = URL.createObjectURL(blob);
-                    const anchor = document.createElement('a');
-                    anchor.href = url;
-                    anchor.download = app.fileName || 'download';
-                    document.body.appendChild(anchor);
-                    anchor.click();
-                    document.body.removeChild(anchor);
-                    URL.revokeObjectURL(url);
-
-                    // Only successful downloads are counted.
-                    this.recordDownload(app);
-                },
-
-                deleteApp(id) {
-                    if (!this.requireAdmin()) return;
-                    if (confirm('Remove this browser-only app?')) {
-                        this.apps = this.apps.filter(app => app.id !== id);
-                        this.saveApps();
-                    }
-                },
-
-                clearData() {
-                    if (!this.requireAdmin()) return;
-                    if (confirm('Clear cached apps and reset the public repository setting?')) {
-                        localStorage.removeItem('schoolcloud_apps');
-                        localStorage.removeItem('schoolcloud_github_config');
-                        localStorage.removeItem('schoolcloud_last_github_sync');
-                        this.apps = [];
-                        this.githubConfig = { repo: DEFAULT_GITHUB_REPO };
-                        this.currentView = 'library';
-                    }
-                },
-
-                openLogin() {
-                    this.loginError = '';
-                    this.loginForm = { username: '', password: '' };
-                    this.showLogin = true;
-                    this.$nextTick(() => {
-                        lucide.createIcons();
-                        document.getElementById('admin-user')?.focus();
-                    });
-                },
-
-                async login() {
-                    if (this.checkingLogin) return;
-                    this.checkingLogin = true;
-                    this.loginError = '';
-
-                    try {
-                        const username = this.loginForm.username.trim();
-                        const digest = await sha256Hex(
-                            `${ADMIN_HASH_SALT}::${username}::${this.loginForm.password}`
-                        );
-
-                        if (username !== ADMIN_USERNAME || !digestsMatch(digest, ADMIN_PASSWORD_SHA256)) {
-                            this.loginError = 'Incorrect username or password.';
-                            return;
-                        }
-
-                        this.isAdmin = true;
-                        this.showLogin = false;
-                        this.loginForm = { username: '', password: '' };
-                        try {
-                            sessionStorage.setItem(ADMIN_SESSION_KEY, ADMIN_PASSWORD_SHA256);
-                        } catch (error) {
-                            console.warn('Could not persist the admin session.', error);
-                        }
-                        this.$nextTick(() => lucide.createIcons());
-                    } catch (error) {
-                        this.loginError = error.message;
-                    } finally {
-                        this.checkingLogin = false;
-                    }
-                },
-
-                logout() {
-                    this.isAdmin = false;
-                    this.currentView = 'library';
-                    try {
-                        sessionStorage.removeItem(ADMIN_SESSION_KEY);
-                    } catch (error) {
-                        console.warn('Could not clear the admin session.', error);
-                    }
-                    this.$nextTick(() => lucide.createIcons());
-                },
-
-                requireAdmin() {
-                    if (this.isAdmin) return true;
-                    this.openLogin();
-                    return false;
-                },
-
-                // Deletion happens on github.com itself, so GitHub performs the
-                // authentication and authorisation. No token lives in this site.
-                githubDeleteUrl(app) {
-                    const repo = this.normalizeRepository(this.githubConfig.repo) || DEFAULT_GITHUB_REPO;
-                    const safeRepo = repo.split('/').map(encodeURIComponent).join('/');
-                    const path = String(app?.githubPath || `apps/${app?.fileName || ''}`)
-                        .replace(/^\/+/, '')
-                        .split('/')
-                        .map(encodeURIComponent)
-                        .join('/');
-                    return `https://github.com/${safeRepo}/delete/main/${path}`;
-                },
-
-                clearLocalDrafts() {
-                    if (!this.requireAdmin()) return;
-                    const count = this.localAppCount;
-                    if (!count) {
-                        alert('There are no browser-only apps to remove.');
-                        return;
-                    }
-                    if (!confirm(`Remove ${count} browser-only app${count === 1 ? '' : 's'} from this device?`)) return;
-                    this.apps = this.apps.filter(app => app.source === 'github');
-                    this.saveApps();
-                    this.$nextTick(() => lucide.createIcons());
-                },
-
-                clearGithubCache() {
-                    if (!this.requireAdmin()) return;
-                    if (!confirm('Clear the cached cloud entries from this browser? The public repository is not changed.')) return;
-                    this.apps = this.apps.filter(app => app.source !== 'github');
-                    this.saveApps();
-                    localStorage.removeItem('schoolcloud_last_github_sync');
-                    this.$nextTick(() => lucide.createIcons());
-                },
-
-                formatDate(isoString) {
-                    const date = new Date(isoString);
-                    if (Number.isNaN(date.getTime())) return 'Unknown date';
-                    return date.toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
-                    });
-                }
-            };
+        // Register the service worker for offline support. Kept inline and
+        // tiny so it works even if the module bundle fails to load.
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').catch(error => {
+                    console.warn('Offline support is unavailable.', error);
+                });
+            });
         }
     </script>
 </body>

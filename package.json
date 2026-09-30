@@ -1,0 +1,24 @@
+{
+  "name": "bzfls-schoolcloud",
+  "version": "1.2.0",
+  "private": true,
+  "description": "BZFLS-SchoolCloud public library — Phase 1",
+  "type": "module",
+  "scripts": {
+    "build:css": "tailwindcss -i assets/css/tailwind.src.css -o assets/css/app.css --minify",
+    "watch:css": "tailwindcss -i assets/css/tailwind.src.css -o assets/css/app.css --watch",
+    "vendor": "node scripts/vendor.mjs",
+    "build": "npm run vendor && npm run build:css",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint:js": "node scripts/syntax-check.mjs"
+  },
+  "devDependencies": {
+    "alpinejs": "^3.14.9",
+    "axe-core": "^4.10.2",
+    "jsdom": "^25.0.1",
+    "lucide": "^0.469.0",
+    "tailwindcss": "^3.4.17",
+    "vitest": "^2.1.8"
+  }
+}
