@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SchoolCloud Standalone - Offline Library</title>
+    <title>BZFLS-SchoolCloud - Offline Library</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Alpine.js for Reactivity -->
@@ -29,19 +29,31 @@
                 <div class="bg-indigo-600 p-2 rounded-lg text-white">
                     <i data-lucide="file-code"></i>
                 </div>
-                <h1 class="text-xl font-bold tracking-tight">SchoolCloud <span class="text-xs font-normal text-slate-400 ml-1">v1.0 (Standalone)</span></h1>
+                <h1 class="text-xl font-bold tracking-tight">BZFLS-SchoolCloud <span class="text-xs font-normal text-slate-400 ml-1">v1.1</span></h1>
             </div>
             
             <div class="flex items-center gap-4">
-                <button @click="currentView = 'upload'" 
-                        x-show="currentView === 'library'"
+                <button @click="currentView = 'upload'"
+                        x-show="isAdmin && currentView === 'library'"
                         class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors shadow-sm">
                     <i data-lucide="plus" class="w-4 h-4"></i>
-                    Teacher Upload
+                    Admin Upload
                 </button>
-                <button @click="currentView = 'settings'" 
+                <button @click="currentView = 'settings'"
+                        x-show="isAdmin"
+                        aria-label="Settings"
                         class="p-2 text-slate-400 hover:text-slate-600 transition-colors">
                     <i data-lucide="settings" class="w-5 h-5"></i>
+                </button>
+                <button x-show="!isAdmin" @click="openLogin()"
+                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors">
+                    <i data-lucide="lock" class="w-4 h-4"></i>
+                    Admin Sign In
+                </button>
+                <button x-show="isAdmin" @click="logout()"
+                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                    Sign Out
                 </button>
             </div>
         </div>
@@ -118,11 +130,19 @@
                                     <i data-lucide="download" class="w-4 h-4"></i>
                                     Download
                                 </button>
-                                <button x-show="app.source !== 'github'" @click="deleteApp(app.id)"
+                                <button x-show="isAdmin && app.source !== 'github'" @click="deleteApp(app.id)"
                                         aria-label="Remove local app"
+                                        title="Remove this browser-only app"
                                         class="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                 </button>
+                                <a x-show="isAdmin && app.source === 'github'"
+                                   :href="githubDeleteUrl(app)" target="_blank" rel="noopener noreferrer"
+                                   aria-label="Delete from GitHub"
+                                   title="Delete from the public repository using your GitHub sign-in"
+                                   class="p-2.5 flex items-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                                    <i data-lucide="cloud-off" class="w-4 h-4"></i>
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -131,14 +151,14 @@
         </div>
 
         <!-- Upload View -->
-        <div x-show="currentView === 'upload'" x-transition x-cloak class="max-w-2xl mx-auto">
+        <div x-show="isAdmin && currentView === 'upload'" x-transition x-cloak class="max-w-2xl mx-auto">
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
                 <div class="flex items-center justify-between mb-8">
                     <button @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors">
                         <i data-lucide="arrow-left" class="w-4 h-4"></i>
                         Back to Library
                     </button>
-                    <h2 class="text-2xl font-bold">Add Mini App</h2>
+                    <h2 class="text-2xl font-bold">Add Mini App <span class="text-xs font-normal text-slate-400">Admin</span></h2>
                 </div>
 
                 <div class="bg-blue-50 border border-blue-100 p-4 rounded-lg mb-6 flex gap-3">
@@ -206,7 +226,7 @@
         </div>
 
         <!-- Settings View -->
-        <div x-show="currentView === 'settings'" x-transition x-cloak class="max-w-2xl mx-auto">
+        <div x-show="isAdmin && currentView === 'settings'" x-transition x-cloak class="max-w-2xl mx-auto">
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
                 <div class="flex items-center justify-between mb-8">
                     <button @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors">
@@ -241,11 +261,61 @@
                             <i data-lucide="github" class="w-4 h-4"></i> Upload an App Through GitHub
                             <i data-lucide="external-link" class="w-3 h-3"></i>
                         </a>
-                        <button @click="clearData()" class="text-red-600 text-sm font-medium flex items-center gap-2 hover:bg-red-50 p-2 rounded-lg transition-colors">
-                            <i data-lucide="trash" class="w-4 h-4"></i> Clear All Local Data
-                        </button>
+                    </div>
+
+                    <div class="pt-4 border-t">
+                        <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2 mb-1">
+                            <i data-lucide="hard-drive" class="w-4 h-4"></i> Local Cleanup
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-3">These actions only affect this browser. Nothing is removed from the public repository.</p>
+                        <div class="flex flex-col gap-2">
+                            <button @click="clearLocalDrafts()" class="text-amber-700 text-sm font-medium flex items-center gap-2 hover:bg-amber-50 p-2 rounded-lg transition-colors">
+                                <i data-lucide="file-x" class="w-4 h-4"></i>
+                                <span x-text="'Remove Browser-Only Apps (' + localAppCount + ')'"></span>
+                            </button>
+                            <button @click="clearGithubCache()" class="text-amber-700 text-sm font-medium flex items-center gap-2 hover:bg-amber-50 p-2 rounded-lg transition-colors">
+                                <i data-lucide="cloud-off" class="w-4 h-4"></i>
+                                <span x-text="'Clear Cached Cloud Entries (' + cloudAppCount + ')'"></span>
+                            </button>
+                            <button @click="clearData()" class="text-red-600 text-sm font-medium flex items-center gap-2 hover:bg-red-50 p-2 rounded-lg transition-colors">
+                                <i data-lucide="trash" class="w-4 h-4"></i> Clear All Local Data
+                            </button>
+                        </div>
                     </div>
                 </div>
+            </div>
+        </div>
+        <!-- Admin Sign In Modal -->
+        <div x-show="showLogin" x-cloak
+             class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4"
+             @keydown.escape.window="showLogin = false">
+            <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm p-6" @click.outside="showLogin = false">
+                <div class="flex items-center gap-2 mb-1">
+                    <div class="bg-indigo-600 p-2 rounded-lg text-white"><i data-lucide="shield" class="w-4 h-4"></i></div>
+                    <h2 class="text-lg font-bold">Administrator Sign In</h2>
+                </div>
+                <p class="text-xs text-slate-400 mb-5">Uploading, settings and deletion are restricted to the administrator.</p>
+                <form @submit.prevent="login()" class="space-y-4">
+                    <div>
+                        <label for="admin-user" class="block text-sm font-medium text-slate-700 mb-1">Username</label>
+                        <input id="admin-user" type="text" x-model="loginForm.username" autocomplete="username" required
+                               class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label for="admin-pass" class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                        <input id="admin-pass" type="password" x-model="loginForm.password" autocomplete="current-password" required
+                               class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <p x-show="loginError" x-text="loginError" class="text-sm text-red-600"></p>
+                    <div class="flex gap-2 pt-1">
+                        <button type="button" @click="showLogin = false"
+                                class="flex-1 border border-slate-300 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-50">Cancel</button>
+                        <button type="submit" :disabled="checkingLogin"
+                                class="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50">
+                            <span x-text="checkingLogin ? 'Checking...' : 'Sign In'"></span>
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </main>
@@ -254,10 +324,43 @@
         const DEFAULT_GITHUB_REPO = 'Petgabs/BZFLS';
         const MAX_LOCAL_APP_BYTES = 2 * 1024 * 1024;
 
+        // Administrator credentials. The password is never stored in plaintext:
+        // only the SHA-256 digest of `<SALT>::<username>::<password>` is present here,
+        // and no GitHub Personal Access Token is embedded anywhere in this site.
+        const ADMIN_USERNAME = 'Petgabs';
+        const ADMIN_HASH_SALT = 'BZFLS-SchoolCloud';
+        const ADMIN_PASSWORD_SHA256 =
+            '80c8d57968c9c07428ad7a68c1b899076a4df66de6c381ed0c2e9efe5aceb262';
+        const ADMIN_SESSION_KEY = 'schoolcloud_admin_session';
+
+        async function sha256Hex(text) {
+            if (!globalThis.crypto?.subtle) {
+                throw new Error('This browser does not support secure hashing (requires HTTPS).');
+            }
+            const data = new TextEncoder().encode(text);
+            const digest = await globalThis.crypto.subtle.digest('SHA-256', data);
+            return Array.from(new Uint8Array(digest))
+                .map(byte => byte.toString(16).padStart(2, '0'))
+                .join('');
+        }
+
+        // Constant-time-ish comparison to avoid trivial timing leaks.
+        function digestsMatch(a, b) {
+            if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+            let diff = 0;
+            for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+            return diff === 0;
+        }
+
         function schoolCloud() {
             return {
                 currentView: 'library',
                 apps: [],
+                isAdmin: false,
+                showLogin: false,
+                checkingLogin: false,
+                loginError: '',
+                loginForm: { username: '', password: '' },
                 uploading: false,
                 syncing: false,
                 fileName: '',
@@ -273,7 +376,21 @@
                     description: ''
                 },
 
+                get localAppCount() {
+                    return this.apps.filter(app => app.source !== 'github').length;
+                },
+
+                get cloudAppCount() {
+                    return this.apps.filter(app => app.source === 'github').length;
+                },
+
                 init() {
+                    try {
+                        this.isAdmin = sessionStorage.getItem(ADMIN_SESSION_KEY) === ADMIN_PASSWORD_SHA256;
+                    } catch (error) {
+                        console.warn('Session storage unavailable; admin must sign in each visit.', error);
+                    }
+
                     try {
                         const savedApps = JSON.parse(localStorage.getItem('schoolcloud_apps') || '[]');
                         if (Array.isArray(savedApps)) this.apps = savedApps;
@@ -317,6 +434,7 @@
                 },
 
                 async saveSettings() {
+                    if (!this.requireAdmin()) return;
                     const repo = this.normalizeRepository(this.githubConfig.repo);
                     if (!repo) {
                         alert('Enter a valid public repository in Owner/Repo format.');
@@ -393,7 +511,7 @@
                     if (!repo) {
                         if (!silent) {
                             alert('Enter a valid public repository in Owner/Repo format.');
-                            this.currentView = 'settings';
+                            if (this.isAdmin) this.currentView = 'settings';
                         }
                         return;
                     }
@@ -485,6 +603,7 @@
                 },
 
                 async handleUpload() {
+                    if (!this.requireAdmin()) return;
                     if (!this.fileReady || !this.fileName || !this.fileContent) {
                         alert('Wait for a valid HTML file to finish loading.');
                         return;
@@ -559,6 +678,7 @@
                 },
 
                 deleteApp(id) {
+                    if (!this.requireAdmin()) return;
                     if (confirm('Remove this browser-only app?')) {
                         this.apps = this.apps.filter(app => app.id !== id);
                         this.saveApps();
@@ -566,6 +686,7 @@
                 },
 
                 clearData() {
+                    if (!this.requireAdmin()) return;
                     if (confirm('Clear cached apps and reset the public repository setting?')) {
                         localStorage.removeItem('schoolcloud_apps');
                         localStorage.removeItem('schoolcloud_github_config');
@@ -574,6 +695,100 @@
                         this.githubConfig = { repo: DEFAULT_GITHUB_REPO };
                         this.currentView = 'library';
                     }
+                },
+
+                openLogin() {
+                    this.loginError = '';
+                    this.loginForm = { username: '', password: '' };
+                    this.showLogin = true;
+                    this.$nextTick(() => {
+                        lucide.createIcons();
+                        document.getElementById('admin-user')?.focus();
+                    });
+                },
+
+                async login() {
+                    if (this.checkingLogin) return;
+                    this.checkingLogin = true;
+                    this.loginError = '';
+
+                    try {
+                        const username = this.loginForm.username.trim();
+                        const digest = await sha256Hex(
+                            `${ADMIN_HASH_SALT}::${username}::${this.loginForm.password}`
+                        );
+
+                        if (username !== ADMIN_USERNAME || !digestsMatch(digest, ADMIN_PASSWORD_SHA256)) {
+                            this.loginError = 'Incorrect username or password.';
+                            return;
+                        }
+
+                        this.isAdmin = true;
+                        this.showLogin = false;
+                        this.loginForm = { username: '', password: '' };
+                        try {
+                            sessionStorage.setItem(ADMIN_SESSION_KEY, ADMIN_PASSWORD_SHA256);
+                        } catch (error) {
+                            console.warn('Could not persist the admin session.', error);
+                        }
+                        this.$nextTick(() => lucide.createIcons());
+                    } catch (error) {
+                        this.loginError = error.message;
+                    } finally {
+                        this.checkingLogin = false;
+                    }
+                },
+
+                logout() {
+                    this.isAdmin = false;
+                    this.currentView = 'library';
+                    try {
+                        sessionStorage.removeItem(ADMIN_SESSION_KEY);
+                    } catch (error) {
+                        console.warn('Could not clear the admin session.', error);
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                requireAdmin() {
+                    if (this.isAdmin) return true;
+                    this.openLogin();
+                    return false;
+                },
+
+                // Deletion happens on github.com itself, so GitHub performs the
+                // authentication and authorisation. No token lives in this site.
+                githubDeleteUrl(app) {
+                    const repo = this.normalizeRepository(this.githubConfig.repo) || DEFAULT_GITHUB_REPO;
+                    const safeRepo = repo.split('/').map(encodeURIComponent).join('/');
+                    const path = String(app?.githubPath || `apps/${app?.fileName || ''}`)
+                        .replace(/^\/+/, '')
+                        .split('/')
+                        .map(encodeURIComponent)
+                        .join('/');
+                    return `https://github.com/${safeRepo}/delete/main/${path}`;
+                },
+
+                clearLocalDrafts() {
+                    if (!this.requireAdmin()) return;
+                    const count = this.localAppCount;
+                    if (!count) {
+                        alert('There are no browser-only apps to remove.');
+                        return;
+                    }
+                    if (!confirm(`Remove ${count} browser-only app${count === 1 ? '' : 's'} from this device?`)) return;
+                    this.apps = this.apps.filter(app => app.source === 'github');
+                    this.saveApps();
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                clearGithubCache() {
+                    if (!this.requireAdmin()) return;
+                    if (!confirm('Clear the cached cloud entries from this browser? The public repository is not changed.')) return;
+                    this.apps = this.apps.filter(app => app.source !== 'github');
+                    this.saveApps();
+                    localStorage.removeItem('schoolcloud_last_github_sync');
+                    this.$nextTick(() => lucide.createIcons());
                 },
 
                 formatDate(isoString) {
