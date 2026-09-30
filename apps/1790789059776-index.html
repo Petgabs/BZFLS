@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SchoolCloud Standalone - Offline Library</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js for Reactivity -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .line-clamp-3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;  
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans min-h-screen" x-data="schoolCloud()" x-init="init()">
+
+    <!-- Header -->
+    <header class="bg-white border-b sticky top-0 z-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-2 cursor-pointer" @click="currentView = 'library'">
+                <div class="bg-indigo-600 p-2 rounded-lg text-white">
+                    <i data-lucide="file-code"></i>
+                </div>
+                <h1 class="text-xl font-bold tracking-tight">SchoolCloud <span class="text-xs font-normal text-slate-400 ml-1">v1.0 (Standalone)</span></h1>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <button @click="currentView = 'upload'" 
+                        x-show="currentView === 'library'"
+                        class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors shadow-sm">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    Teacher Upload
+                </button>
+                <button @click="currentView = 'settings'" 
+                        class="p-2 text-slate-400 hover:text-slate-600 transition-colors">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- Welcome Section -->
+        <div x-show="currentView === 'library'" x-transition 
+             class="mb-12 grid grid-cols-1 md:grid-cols-3 gap-6 bg-indigo-900 text-white p-8 rounded-2xl shadow-xl">
+            <div class="flex flex-col gap-3">
+                <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="upload-cloud" class="w-5 h-5 text-indigo-100"></i>
+                </div>
+                <h3 class="text-lg font-bold text-white">1. Share Apps</h3>
+                <p class="text-indigo-100 text-sm leading-relaxed">Teachers upload mini HTML apps for simulations or quizzes.</p>
+            </div>
+            <div class="flex flex-col gap-3">
+                <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="database" class="w-5 h-5 text-indigo-100"></i>
+                </div>
+                <h3 class="text-lg font-bold text-white">2. Store Locally</h3>
+                <p class="text-indigo-100 text-sm leading-relaxed">Everything is saved in your browser storage for instant access.</p>
+            </div>
+            <div class="flex flex-col gap-3">
+                <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="download" class="w-5 h-5 text-indigo-100"></i>
+                </div>
+                <h3 class="text-lg font-bold text-white">3. Offline Use</h3>
+                <p class="text-indigo-100 text-sm leading-relaxed">Students download apps to their device and use them anywhere.</p>
+            </div>
+        </div>
+
+        <!-- Library View -->
+        <div x-show="currentView === 'library'" x-transition x-cloak>
+            <div class="mb-8">
+                <h2 class="text-3xl font-bold text-slate-900">Mini Apps Library</h2>
+                <p class="text-slate-600 mt-2">Browse the collection of educational tools for your classroom.</p>
+            </div>
+
+            <!-- Empty State -->
+            <template x-if="apps.length === 0">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-16 text-center">
+                    <div class="bg-slate-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <i data-lucide="inbox" class="w-10 h-10 text-slate-400"></i>
+                    </div>
+                    <h3 class="text-xl font-semibold text-slate-900">No apps available</h3>
+                    <p class="text-slate-500 mt-2 max-w-xs mx-auto">Click the upload button to start building your school library.</p>
+                </div>
+            </template>
+
+            <!-- Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <template x-for="app in apps" :key="app.id">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow group">
+                        <div class="p-6">
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 class="text-lg font-bold text-slate-900 truncate pr-4" x-text="app.name"></h3>
+                                <span class="text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2 py-1 rounded">HTML5</span>
+                            </div>
+                            <p class="text-slate-600 text-sm line-clamp-3 mb-6 min-h-[4.5rem]" x-text="app.description || 'No description provided.'"></p>
+                            
+                            <div class="flex items-center gap-2 text-slate-400 text-xs mb-6">
+                                <i data-lucide="user" class="w-3 h-3"></i>
+                                <span x-text="'By ' + app.teacherName"></span>
+                                <span class="mx-1">•</span>
+                                <span x-text="formatDate(app.createdAt)"></span>
+                            </div>
+
+                            <div class="flex gap-2">
+                                <button @click="downloadApp(app)" 
+                                        class="flex-1 flex items-center justify-center gap-2 bg-slate-900 text-white py-2.5 rounded-lg hover:bg-slate-800 transition-colors">
+                                    <i data-lucide="download" class="w-4 h-4"></i>
+                                    Download
+                                </button>
+                                <button @click="deleteApp(app.id)" 
+                                        class="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Upload View -->
+        <div x-show="currentView === 'upload'" x-transition x-cloak class="max-w-2xl mx-auto">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
+                <div class="flex items-center justify-between mb-8">
+                    <button @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors">
+                        <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                        Back to Library
+                    </button>
+                    <h2 class="text-2xl font-bold">Publish Mini App</h2>
+                </div>
+
+                <form @submit.prevent="handleUpload" class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">App Name</label>
+                        <input type="text" x-model="newApp.name" required placeholder="e.g., Periodic Table Explorer"
+                               class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Teacher Name</label>
+                        <input type="text" x-model="newApp.teacherName" required placeholder="Your name"
+                               class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                        <textarea x-model="newApp.description" rows="3" placeholder="Explain what this tool does..."
+                                  class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">HTML File</label>
+                        <div class="mt-1 relative border-2 border-slate-200 border-dashed rounded-xl p-8 text-center hover:border-indigo-400 transition-colors">
+                            <input type="file" @change="handleFileChange" accept=".html" required 
+                                   class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                            <div class="space-y-2">
+                                <i data-lucide="file-up" class="mx-auto h-12 w-12 text-slate-300"></i>
+                                <div class="text-sm text-slate-600">
+                                    <span class="font-semibold text-indigo-600">Click to upload</span> or drag and drop
+                                </div>
+                                <p class="text-xs text-slate-400" x-text="fileName ? 'Selected: ' + fileName : 'Support only .html files'"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" :disabled="uploading"
+                            class="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3.5 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-lg shadow-indigo-100">
+                        <span x-show="!uploading" class="flex items-center gap-2">
+                            <i data-lucide="cloud-upload" class="w-5 h-5"></i> Publish to SchoolCloud
+                        </span>
+                        <span x-show="uploading" class="flex items-center gap-2">
+                            <svg class="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            Processing...
+                        </span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Settings View -->
+        <div x-show="currentView === 'settings'" x-transition x-cloak class="max-w-2xl mx-auto">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
+                <div class="flex items-center justify-between mb-8">
+                    <button @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors">
+                        <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
+                    </button>
+                    <h2 class="text-2xl font-bold">Cloud Settings</h2>
+                </div>
+
+                <div class="bg-blue-50 border border-blue-100 p-4 rounded-lg mb-8 flex gap-3">
+                    <i data-lucide="info" class="w-5 h-5 text-blue-500 flex-shrink-0"></i>
+                    <p class="text-sm text-blue-700">This standalone version stores data locally in your browser. To sync with GitHub, enter your repository details below.</p>
+                </div>
+
+                <div class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">GitHub Personal Access Token</label>
+                        <input type="password" x-model="githubConfig.token" placeholder="ghp_xxxxxxxxxxxx" 
+                               class="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <p class="text-[10px] text-slate-400 mt-1">Required for uploading to GitHub. Create one in GitHub Settings > Developer Settings.</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Repository (Owner/Repo)</label>
+                        <input type="text" x-model="githubConfig.repo" placeholder="e.g., myusername/school-apps" 
+                               class="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    
+                    <button @click="saveSettings()" class="w-full bg-slate-900 text-white py-2 rounded-lg font-bold hover:bg-slate-800 transition-colors">
+                        Save Configuration
+                    </button>
+
+                    <div class="pt-4 border-t flex flex-col gap-2">
+                        <button @click="syncFromGithub()" class="text-indigo-600 text-sm font-medium flex items-center gap-2 hover:bg-indigo-50 p-2 rounded-lg transition-colors">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Sync Library from GitHub
+                        </button>
+                        <button @click="clearData()" class="text-red-600 text-sm font-medium flex items-center gap-2 hover:bg-red-50 p-2 rounded-lg transition-colors">
+                            <i data-lucide="trash" class="w-4 h-4"></i> Clear All Local Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function schoolCloud() {
+            return {
+                currentView: 'library',
+                apps: [],
+                uploading: false,
+                fileName: '',
+                fileContent: '',
+                githubConfig: {
+                    token: '',
+                    repo: ''
+                },
+                newApp: {
+                    name: '',
+                    teacherName: '',
+                    description: ''
+                },
+
+                init() {
+                    const savedApps = localStorage.getItem('schoolcloud_apps');
+                    if (savedApps) this.apps = JSON.parse(savedApps);
+                    
+                    const savedConfig = localStorage.getItem('schoolcloud_github_config');
+                    if (savedConfig) this.githubConfig = JSON.parse(savedConfig);
+
+                    this.$nextTick(() => lucide.createIcons());
+                    
+                    this.$watch('currentView', () => {
+                        setTimeout(() => lucide.createIcons(), 50);
+                    });
+                },
+
+                saveSettings() {
+                    localStorage.setItem('schoolcloud_github_config', JSON.stringify(this.githubConfig));
+                    alert('Settings saved locally!');
+                },
+
+                async syncFromGithub() {
+                    if (!this.githubConfig.token || !this.githubConfig.repo) {
+                        alert('Please configure GitHub settings first!');
+                        this.currentView = 'settings';
+                        return;
+                    }
+
+                    try {
+                        // We first check the repository root to see if the apps folder exists
+                        const res = await fetch(`https://api.github.com/repos/${this.githubConfig.repo}/contents/apps`, {
+                            headers: { 
+                                'Authorization': `token ${this.githubConfig.token}`,
+                                'Accept': 'application/vnd.github.v3+json'
+                            }
+                        });
+                        
+                        if (res.status === 404) {
+                            alert('The "apps" folder was not found in your repository. You need to upload at least one app first!');
+                            return;
+                        }
+
+                        if (!res.ok) {
+                            const errorData = await res.json();
+                            throw new Error(errorData.message || `GitHub error: ${res.status}`);
+                        }
+                        
+                        const files = await res.json();
+                        
+                        if (!Array.isArray(files)) {
+                            throw new Error('Expected a list of files but received something else.');
+                        }
+
+                        const newApps = [];
+                        for (const file of files) {
+                            if (file.name.endsWith('.html')) {
+                                newApps.push({
+                                    id: file.sha,
+                                    name: file.name.split('-').slice(1).join('-').replace('.html', '') || file.name.replace('.html', ''),
+                                    teacherName: 'GitHub Cloud',
+                                    description: 'Synced from repository',
+                                    fileName: file.name,
+                                    githubPath: file.path,
+                                    downloadUrl: file.download_url,
+                                    createdAt: new Date().toISOString()
+                                });
+                            }
+                        }
+                        
+                        this.apps = newApps;
+                        this.saveApps();
+                        alert(`Sync complete! Found ${newApps.length} apps.`);
+                    } catch (err) {
+                        console.error(err);
+                        alert('Error syncing: ' + err.message + '\n\nPossible causes:\n1. Invalid Token\n2. Incorrect Repo name (should be username/repo)\n3. Internet connection issue');
+                    }
+                },
+
+                handleFileChange(e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    this.fileName = file.name;
+                    
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        this.fileContent = event.target.result;
+                    };
+                    reader.readAsText(file);
+                },
+
+                async handleUpload() {
+                    this.uploading = true;
+                    
+                    try {
+                        const path = `apps/${Date.now()}-${this.fileName}`;
+                        const content = btoa(unescape(encodeURIComponent(this.fileContent)));
+                        
+                        let githubSuccess = false;
+                        
+                        if (this.githubConfig.token && this.githubConfig.repo) {
+                            const res = await fetch(`https://api.github.com/repos/${this.githubConfig.repo}/contents/${path}`, {
+                                method: 'PUT',
+                                headers: {
+                                    'Authorization': `token ${this.githubConfig.token}`,
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    message: `Upload ${this.newApp.name} by ${this.newApp.teacherName}`,
+                                    content: content
+                                })
+                            });
+                            
+                            if (res.ok) {
+                                githubSuccess = true;
+                            } else {
+                                const errorData = await res.json();
+                                console.error('GitHub Upload Error:', errorData);
+                                throw new Error(`GitHub Upload Failed: ${errorData.message}`);
+                            }
+                        }
+
+                        const app = {
+                            id: Date.now().toString(),
+                            name: this.newApp.name,
+                            teacherName: this.newApp.teacherName,
+                            description: this.newApp.description,
+                            fileName: this.fileName || 'app.html',
+                            content: this.fileContent,
+                            githubPath: githubSuccess ? path : null,
+                            createdAt: new Date().toISOString()
+                        };
+
+                        this.apps.unshift(app);
+                        this.saveApps();
+                        
+                        this.newApp = { name: '', teacherName: '', description: '' };
+                        this.fileName = '';
+                        this.fileContent = '';
+                        this.uploading = false;
+                        this.currentView = 'library';
+                        
+                        alert(githubSuccess ? 'App published to GitHub and local library!' : 'App saved to local library (GitHub config missing/failed).');
+                    } catch (err) {
+                        alert('Upload failed: ' + err.message);
+                        this.uploading = false;
+                    }
+                },
+
+                saveApps() {
+                    localStorage.setItem('schoolcloud_apps', JSON.stringify(this.apps));
+                },
+
+                async downloadApp(app) {
+                    let content = app.content;
+                    
+                    // If content is not local, fetch from GitHub
+                    if (!content && app.downloadUrl) {
+                        try {
+                            const res = await fetch(app.downloadUrl);
+                            content = await res.text();
+                        } catch (err) {
+                            alert('Failed to download from GitHub: ' + err.message);
+                            return;
+                        }
+                    }
+
+                    const blob = new Blob([content], { type: 'text/html' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = app.fileName;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                },
+
+                deleteApp(id) {
+                    if (confirm('Are you sure you want to delete this app?')) {
+                        this.apps = this.apps.filter(a => a.id !== id);
+                        this.saveApps();
+                    }
+                },
+
+                clearData() {
+                    if (confirm('Wipe everything? This cannot be undone.')) {
+                        localStorage.removeItem('schoolcloud_apps');
+                        this.apps = [];
+                        this.currentView = 'library';
+                    }
+                },
+
+                formatDate(isoString) {
+                    const date = new Date(isoString);
+                    return date.toLocaleDateString(undefined, { 
+                        month: 'short', 
+                        day: 'numeric',
+                        year: 'numeric'
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
