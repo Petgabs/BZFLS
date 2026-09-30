@@ -32,7 +32,20 @@
                 <h1 class="text-xl font-bold tracking-tight">BZFLS-SchoolCloud <span class="text-xs font-normal text-slate-400 ml-1">v1.1</span></h1>
             </div>
             
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-3 sm:gap-4">
+                <!-- Visitor counter -->
+                <div class="hidden sm:flex items-center gap-2 bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full text-xs font-medium"
+                     :title="stats.online ? 'Total visits to this site' : 'Visit counter is offline; showing this device only'">
+                    <i data-lucide="users" class="w-3.5 h-3.5 text-indigo-600"></i>
+                    <span x-text="stats.loadingVisitors ? '…' : formatCount(stats.visitors)"></span>
+                    <span class="text-slate-400">visits</span>
+                </div>
+                <button @click="openDashboard()"
+                        x-show="isAdmin"
+                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                    Dashboard
+                </button>
                 <button @click="currentView = 'upload'"
                         x-show="isAdmin && currentView === 'library'"
                         class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors shadow-sm">
@@ -117,11 +130,22 @@
                             </div>
                             <p class="text-slate-600 text-sm line-clamp-3 mb-6 min-h-[4.5rem]" x-text="app.description || 'No description provided.'"></p>
                             
-                            <div class="flex items-center gap-2 text-slate-400 text-xs mb-6">
+                            <div class="flex items-center gap-2 text-slate-400 text-xs mb-4">
                                 <i data-lucide="user" class="w-3 h-3"></i>
                                 <span x-text="'By ' + app.teacherName"></span>
                                 <span class="mx-1">•</span>
                                 <span x-text="formatDate(app.createdAt)"></span>
+                            </div>
+
+                            <!-- Download counter -->
+                            <div class="flex items-center gap-2 mb-5">
+                                <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-semibold"
+                                      :title="downloadsOf(app) === 1 ? '1 download' : downloadsOf(app) + ' downloads'">
+                                    <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i>
+                                    <span x-text="formatCount(downloadsOf(app))"></span>
+                                    <span class="font-normal" x-text="downloadsOf(app) === 1 ? 'download' : 'downloads'"></span>
+                                </span>
+                                <span x-show="stats.loadingDownloads" class="text-[10px] text-slate-400">updating…</span>
                             </div>
 
                             <div class="flex gap-2">
@@ -147,6 +171,111 @@
                         </div>
                     </div>
                 </template>
+            </div>
+        </div>
+
+        <!-- Admin Dashboard View -->
+        <div x-show="isAdmin && currentView === 'dashboard'" x-transition x-cloak>
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
+                <div>
+                    <button @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors mb-3">
+                        <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                        Back to Library
+                    </button>
+                    <h2 class="text-3xl font-bold text-slate-900">Admin Dashboard</h2>
+                    <p class="text-slate-600 mt-2">Live usage for the public library, shared across every device.</p>
+                </div>
+                <button @click="refreshStats()" :disabled="stats.loadingDownloads"
+                        class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-60 transition-colors shadow-sm">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    <span x-text="stats.loadingDownloads ? 'Refreshing…' : 'Refresh Stats'"></span>
+                </button>
+            </div>
+
+            <div x-show="!stats.online" class="mb-6 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 text-sm">
+                <i data-lucide="wifi-off" class="w-4 h-4 mt-0.5"></i>
+                <span>The shared counter service is unreachable, so the numbers below come from this browser only. They will resync automatically when the service is back.</span>
+            </div>
+
+            <!-- Stat cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Visits</span>
+                        <i data-lucide="users" class="w-4 h-4 text-indigo-600"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-slate-900" x-text="stats.loadingVisitors ? '…' : formatCount(stats.visitors)"></p>
+                    <p class="text-xs text-slate-500 mt-1">Counted once per browser session</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Downloads</span>
+                        <i data-lucide="download-cloud" class="w-4 h-4 text-emerald-600"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-slate-900" x-text="formatCount(totalDownloads)"></p>
+                    <p class="text-xs text-slate-500 mt-1">Across every app in the library</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Public Apps</span>
+                        <i data-lucide="cloud" class="w-4 h-4 text-sky-600"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-slate-900" x-text="cloudAppCount"></p>
+                    <p class="text-xs text-slate-500 mt-1">Synced from the GitHub repository</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Browser-Only Apps</span>
+                        <i data-lucide="hard-drive" class="w-4 h-4 text-slate-500"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-slate-900" x-text="localAppCount"></p>
+                    <p class="text-xs text-slate-500 mt-1">Drafts saved on this device</p>
+                </div>
+            </div>
+
+            <!-- Per-app table -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                    <h3 class="font-bold text-slate-900">Downloads by App</h3>
+                    <span class="text-xs text-slate-400" x-text="'Updated ' + stats.updatedAtLabel"></span>
+                </div>
+                <template x-if="apps.length === 0">
+                    <p class="px-6 py-10 text-center text-slate-500 text-sm">No apps in the library yet.</p>
+                </template>
+                <div x-show="apps.length > 0" class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                            <tr>
+                                <th class="text-left font-semibold px-6 py-3">App</th>
+                                <th class="text-left font-semibold px-6 py-3 hidden sm:table-cell">Source</th>
+                                <th class="text-left font-semibold px-6 py-3">Downloads</th>
+                                <th class="text-left font-semibold px-6 py-3 hidden md:table-cell w-1/3">Share</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <template x-for="app in rankedApps" :key="app.id">
+                                <tr class="hover:bg-slate-50">
+                                    <td class="px-6 py-4">
+                                        <p class="font-medium text-slate-900" x-text="app.name"></p>
+                                        <p class="text-xs text-slate-400" x-text="app.fileName"></p>
+                                    </td>
+                                    <td class="px-6 py-4 hidden sm:table-cell">
+                                        <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
+                                              :class="app.source === 'github' ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-600'"
+                                              x-text="app.source === 'github' ? 'Public' : 'Local'"></span>
+                                    </td>
+                                    <td class="px-6 py-4 font-semibold text-slate-900" x-text="formatCount(downloadsOf(app))"></td>
+                                    <td class="px-6 py-4 hidden md:table-cell">
+                                        <div class="w-full bg-slate-100 rounded-full h-2">
+                                            <div class="bg-emerald-500 h-2 rounded-full transition-all"
+                                                 :style="`width: ${sharePercent(app)}%`"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -333,6 +462,81 @@
             '80c8d57968c9c07428ad7a68c1b899076a4df66de6c381ed0c2e9efe5aceb262';
         const ADMIN_SESSION_KEY = 'schoolcloud_admin_session';
 
+        // ---------------------------------------------------------------
+        // Shared counters (visits + downloads)
+        //
+        // GitHub Pages is a static host, so the counts live in a free,
+        // token-less counter service (Abacus). Every visitor sees the same
+        // global numbers. If the service is unreachable the site silently
+        // falls back to a per-browser mirror in localStorage so the UI never
+        // breaks; the mirror is replaced by the shared value on the next
+        // successful call.
+        // ---------------------------------------------------------------
+        const COUNTER_BASE = 'https://abacus.jasoncameron.dev';
+        const COUNTER_NAMESPACE = 'bzfls-schoolcloud-petgabs';
+        const COUNTER_TIMEOUT_MS = 6000;
+        const COUNTER_MIRROR_KEY = 'schoolcloud_counter_mirror';
+        const VISIT_SESSION_KEY = 'schoolcloud_visit_counted';
+        const VISITOR_COUNTER_KEY = 'site-visits';
+
+        function readMirror() {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(COUNTER_MIRROR_KEY) || '{}');
+                return parsed && typeof parsed === 'object' ? parsed : {};
+            } catch (error) {
+                return {};
+            }
+        }
+
+        function writeMirror(key, value) {
+            try {
+                const mirror = readMirror();
+                mirror[key] = value;
+                localStorage.setItem(COUNTER_MIRROR_KEY, JSON.stringify(mirror));
+            } catch (error) {
+                console.warn('Could not cache the counter locally.', error);
+            }
+        }
+
+        // Counter keys must be URL-safe and stable for the lifetime of an app.
+        function counterKeyFor(app) {
+            const base = String(app?.githubPath || app?.fileName || app?.id || 'unknown');
+            const slug = base
+                .toLowerCase()
+                .replace(/^apps\//, '')
+                .replace(/\.html$/, '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '')
+                .slice(0, 60);
+            return `dl-${slug || 'unknown'}`;
+        }
+
+        async function counterRequest(action, key) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), COUNTER_TIMEOUT_MS);
+            try {
+                const response = await fetch(
+                    `${COUNTER_BASE}/${action}/${encodeURIComponent(COUNTER_NAMESPACE)}/${encodeURIComponent(key)}`,
+                    { cache: 'no-store', signal: controller.signal }
+                );
+                // A counter that has never been hit simply does not exist yet.
+                if (response.status === 404) return 0;
+                if (!response.ok) throw new Error(`Counter service returned ${response.status}`);
+                const data = await response.json();
+                const value = Number(data?.value);
+                if (!Number.isFinite(value)) throw new Error('Counter service returned an invalid value.');
+                writeMirror(key, value);
+                return value;
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        const counterApi = {
+            get: key => counterRequest('get', key),
+            hit: key => counterRequest('hit', key)
+        };
+
         async function sha256Hex(text) {
             if (!globalThis.crypto?.subtle) {
                 throw new Error('This browser does not support secure hashing (requires HTTPS).');
@@ -375,6 +579,22 @@
                     teacherName: '',
                     description: ''
                 },
+                stats: {
+                    visitors: 0,
+                    downloads: {},
+                    online: true,
+                    loadingVisitors: true,
+                    loadingDownloads: false,
+                    updatedAtLabel: 'never'
+                },
+
+                get totalDownloads() {
+                    return this.apps.reduce((sum, app) => sum + this.downloadsOf(app), 0);
+                },
+
+                get rankedApps() {
+                    return [...this.apps].sort((a, b) => this.downloadsOf(b) - this.downloadsOf(a));
+                },
 
                 get localAppCount() {
                     return this.apps.filter(app => app.source !== 'github').length;
@@ -415,9 +635,125 @@
                         setTimeout(() => lucide.createIcons(), 50);
                     });
 
+                    // Seed the counters from the local mirror so numbers render instantly,
+                    // then replace them with the shared totals.
+                    this.stats.downloads = readMirror();
+                    this.stats.visitors = Number(this.stats.downloads[VISITOR_COUNTER_KEY]) || 0;
+
+                    this.countVisit();
+
                     // Always refresh from GitHub on page load. Saved entries remain visible as
                     // a fallback if the public API is temporarily unavailable.
-                    this.syncFromGithub({ silent: true });
+                    this.syncFromGithub({ silent: true }).then(() => this.refreshStats());
+                },
+
+                // ---- Counters -------------------------------------------------
+
+                async countVisit() {
+                    this.stats.loadingVisitors = true;
+                    let alreadyCounted = false;
+                    try {
+                        alreadyCounted = sessionStorage.getItem(VISIT_SESSION_KEY) === '1';
+                    } catch (error) {
+                        console.warn('Session storage unavailable; this visit may be counted twice.', error);
+                    }
+
+                    try {
+                        // One increment per browser session, plain reads afterwards.
+                        this.stats.visitors = alreadyCounted
+                            ? await counterApi.get(VISITOR_COUNTER_KEY)
+                            : await counterApi.hit(VISITOR_COUNTER_KEY);
+                        this.stats.online = true;
+                        if (!alreadyCounted) {
+                            try {
+                                sessionStorage.setItem(VISIT_SESSION_KEY, '1');
+                            } catch (error) {
+                                /* Counting twice is preferable to failing here. */
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('The shared visit counter is unavailable.', error);
+                        this.stats.online = false;
+                        if (!alreadyCounted) {
+                            this.stats.visitors = (Number(readMirror()[VISITOR_COUNTER_KEY]) || 0) + 1;
+                            writeMirror(VISITOR_COUNTER_KEY, this.stats.visitors);
+                        }
+                    } finally {
+                        this.stats.loadingVisitors = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                downloadsOf(app) {
+                    return Number(this.stats.downloads[counterKeyFor(app)]) || 0;
+                },
+
+                sharePercent(app) {
+                    const total = this.totalDownloads;
+                    if (!total) return 0;
+                    return Math.round((this.downloadsOf(app) / total) * 100);
+                },
+
+                async refreshStats() {
+                    if (this.stats.loadingDownloads) return;
+                    this.stats.loadingDownloads = true;
+                    let anyFailure = false;
+
+                    try {
+                        const results = await Promise.all(this.apps.map(async app => {
+                            const key = counterKeyFor(app);
+                            try {
+                                return [key, await counterApi.get(key)];
+                            } catch (error) {
+                                anyFailure = true;
+                                return [key, Number(readMirror()[key]) || 0];
+                            }
+                        }));
+
+                        const downloads = { ...this.stats.downloads };
+                        results.forEach(([key, value]) => { downloads[key] = value; });
+                        this.stats.downloads = downloads;
+
+                        try {
+                            this.stats.visitors = await counterApi.get(VISITOR_COUNTER_KEY);
+                        } catch (error) {
+                            anyFailure = true;
+                        }
+
+                        this.stats.online = !anyFailure;
+                        this.stats.updatedAtLabel = new Date().toLocaleTimeString();
+                    } finally {
+                        this.stats.loadingDownloads = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async recordDownload(app) {
+                    const key = counterKeyFor(app);
+                    // Optimistic update keeps the card responsive on slow networks.
+                    this.stats.downloads = { ...this.stats.downloads, [key]: this.downloadsOf(app) + 1 };
+                    try {
+                        const value = await counterApi.hit(key);
+                        this.stats.downloads = { ...this.stats.downloads, [key]: value };
+                        this.stats.online = true;
+                    } catch (error) {
+                        console.warn('The shared download counter is unavailable.', error);
+                        this.stats.online = false;
+                        writeMirror(key, this.stats.downloads[key]);
+                    } finally {
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                openDashboard() {
+                    if (!this.requireAdmin()) return;
+                    this.currentView = 'dashboard';
+                    this.refreshStats();
+                },
+
+                formatCount(value) {
+                    const number = Number(value) || 0;
+                    return number.toLocaleString();
                 },
 
                 normalizeRepository(value) {
@@ -548,6 +884,7 @@
                         );
                         this.apps = [...localApps, ...githubApps];
                         this.saveApps();
+                        this.refreshStats();
                         this.$nextTick(() => lucide.createIcons());
 
                         if (!silent) {
@@ -675,6 +1012,9 @@
                     anchor.click();
                     document.body.removeChild(anchor);
                     URL.revokeObjectURL(url);
+
+                    // Only successful downloads are counted.
+                    this.recordDownload(app);
                 },
 
                 deleteApp(id) {
