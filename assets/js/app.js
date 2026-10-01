@@ -32,6 +32,7 @@ import {
   SUBMISSIONS_STORAGE_KEY,
   UPLOAD_PREFS_KEY,
   GITHUB_CONFIG_KEY,
+  GITHUB_TOKEN_SESSION_KEY,
   LIBRARY_CACHE_KEY
 } from './config.js';
 
@@ -87,6 +88,7 @@ import {
   submissionFromDraft,
   libraryItemFromSubmission,
   libraryJsonEntry,
+  overrideFromSubmission,
   submissionCounts,
   parseYearsInput,
   suggestSubject,
@@ -103,6 +105,14 @@ import {
   deleteFile,
   readAsDataUrl
 } from './lib/fileStore.js';
+
+import {
+  createGithubPublisher,
+  publishSubmissionToGithub as runGithubPublish,
+  normaliseToken,
+  isFineGrainedToken,
+  blobToBase64
+} from './lib/githubPublish.js';
 
 // --- Admin hashing ----------------------------------------------------------
 
@@ -182,6 +192,20 @@ export function schoolCloud() {
     academicYears: academicYearOptions(),
     githubConfig: { repo: DEFAULT_GITHUB_REPO },
 
+    // --- GitHub auto-publish (administrator) -----------------------------------
+    // A fine-grained PAT (Contents: Read and write, this repository only) that
+    // lets approval push the file to apps/ and merge library.json in one step.
+    // Session-only: kept in sessionStorage, forgotten when the tab closes.
+    githubAuth: {
+      token: '',          // input field, mirrored to sessionStorage on connect
+      connected: false,
+      login: '',          // 'Connected as <login>' (cosmetic, may be empty)
+      verifying: false,
+      error: '',
+      showToken: false
+    },
+    publishingSubmissionId: '',
+
     // --- Submissions -----------------------------------------------------------
     submissions: [],
 
@@ -248,6 +272,11 @@ export function schoolCloud() {
 
     get teacherOverrideActive() {
       return Boolean(this.teacherOverride);
+    },
+
+    /** True when approval can publish straight to GitHub from this session. */
+    get autoPublishReady() {
+      return this.githubAuth.connected && !this.offline;
     },
 
     get filteredApps() {
@@ -356,6 +385,7 @@ export function schoolCloud() {
         console.warn('Ignoring invalid GitHub configuration.', error);
       }
       this.persistGithubConfig();
+      this.loadGithubToken();
 
       // Restore filters from the URL so searches are shareable.
       this.readFiltersFromUrl();
@@ -698,6 +728,175 @@ export function schoolCloud() {
       const repo = this.normalizeRepository(this.githubConfig.repo) || DEFAULT_GITHUB_REPO;
       const safeRepo = repo.split('/').map(encodeURIComponent).join('/');
       return `https://github.com/${safeRepo}/upload/main/apps`;
+    },
+
+    // --- GitHub auto-publish (administrator) ---------------------------------
+    //
+    // Settings → GitHub Auto-Publish stores a fine-grained PAT in
+    // sessionStorage for this tab only. While connected, approving a pending
+    // submission commits the file to apps/ and merges its curated metadata
+    // into library.json automatically; the manual copy/paste flow stays
+    // available as the fallback.
+
+    githubTokenUrl() {
+      // Deep link that pre-selects the fine-grained token form.
+      return 'https://github.com/settings/personal-access-tokens/new';
+    },
+
+    loadGithubToken() {
+      try {
+        const token = normaliseToken(sessionStorage.getItem(GITHUB_TOKEN_SESSION_KEY) || '');
+        if (token) {
+          this.githubAuth.token = token;
+          // Trust the stored token for this tab; it was verified when saved.
+          this.githubAuth.connected = true;
+        }
+      } catch (error) {
+        console.warn('Session storage unavailable; GitHub auto-publish needs reconnecting.', error);
+      }
+    },
+
+    buildGithubPublisher() {
+      return createGithubPublisher({
+        repo: this.normalizeRepository(this.githubConfig.repo) || DEFAULT_GITHUB_REPO,
+        token: this.githubAuth.token,
+        branch: 'main'
+      });
+    },
+
+    /** Verify the pasted token against the repository, then keep it for this tab. */
+    async connectGithub() {
+      if (!this.requireAdmin()) return;
+      const token = normaliseToken(this.githubAuth.token);
+      this.githubAuth.error = '';
+
+      if (!token) {
+        this.githubAuth.error = 'Paste a GitHub token first.';
+        return;
+      }
+      if (!isFineGrainedToken(token) && !/^gh[a-z]_/.test(token)) {
+        this.githubAuth.error = 'That does not look like a GitHub token. Fine-grained tokens start with “github_pat_”.';
+        return;
+      }
+
+      this.githubAuth.verifying = true;
+      try {
+        this.githubAuth.token = token;
+        const result = await this.buildGithubPublisher().verify();
+        this.githubAuth.connected = true;
+        this.githubAuth.login = result.login;
+        try {
+          sessionStorage.setItem(GITHUB_TOKEN_SESSION_KEY, token);
+        } catch (error) {
+          console.warn('Could not keep the GitHub token for this session.', error);
+        }
+      } catch (error) {
+        this.githubAuth.connected = false;
+        this.githubAuth.login = '';
+        this.githubAuth.error = error.message;
+      } finally {
+        this.githubAuth.verifying = false;
+        this.$nextTick(() => refreshIcons());
+      }
+    },
+
+    /** Forget the token (sessionStorage + memory). */
+    disconnectGithub() {
+      this.githubAuth = { token: '', connected: false, login: '', verifying: false, error: '', showToken: false };
+      try {
+        sessionStorage.removeItem(GITHUB_TOKEN_SESSION_KEY);
+      } catch (error) {
+        console.warn('Could not clear the GitHub token.', error);
+      }
+      this.$nextTick(() => refreshIcons());
+    },
+
+    toggleGithubToken() {
+      this.githubAuth.showToken = !this.githubAuth.showToken;
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /** Raw base64 of a submission's stored bytes, or '' when unavailable. */
+    async submissionBase64(record) {
+      if (!record) return '';
+      if (record.storage === 'idb') {
+        const blob = await getFile(record.id);
+        return blob ? blobToBase64(blob) : '';
+      }
+      if (record.storage === 'inline' && record.inlineData) {
+        const comma = record.inlineData.indexOf(',');
+        return comma >= 0 ? record.inlineData.slice(comma + 1).replace(/\s+/g, '') : '';
+      }
+      return '';
+    },
+
+    /**
+     * Push an approved submission to the public repository: the file goes to
+     * apps/ and the curated metadata is merged into library.json. Returns
+     * true on success. Safe to call from the approve flow or from the
+     * "Publish to GitHub" button on an already-approved submission.
+     */
+    async publishSubmissionToGithub(id, options = {}) {
+      if (!this.requireAdmin()) return false;
+      const record = this.submissions.find(item => item.id === id);
+      if (!record || record.status !== 'approved' || record.published) return false;
+      if (!this.githubAuth.connected) {
+        this.currentView = 'settings';
+        alert('Connect a GitHub token in Settings → GitHub Auto-Publish first.');
+        return false;
+      }
+      if (this.publishingSubmissionId) return false;
+
+      this.publishingSubmissionId = record.id;
+      try {
+        const fileBase64 = await this.submissionBase64(record);
+        if (!fileBase64) {
+          alert('The stored file is no longer available on this device, so it cannot be uploaded. Ask the owner to submit it again, or use the manual GitHub upload.');
+          return false;
+        }
+
+        const publisher = this.buildGithubPublisher();
+        const input = {
+          fileName: record.fileName,
+          fileBase64,
+          entry: overrideFromSubmission(record),
+          title: record.title,
+          overwrite: Boolean(options.overwrite)
+        };
+
+        let result;
+        try {
+          result = await runGithubPublish(publisher, input);
+        } catch (error) {
+          // A file already at apps/<name> needs an explicit decision.
+          if (error.status === 409 && !input.overwrite &&
+              confirm(`“apps/${record.fileName}” already exists in the repository.\n\nReplace it with this submission? The curated metadata will be updated too.`)) {
+            result = await runGithubPublish(publisher, { ...input, overwrite: true });
+          } else {
+            throw error;
+          }
+        }
+
+        // Mark published: the repository copy is canonical from now on, so
+        // the local library copy is dropped and the next sync replaces it.
+        record.published = true;
+        record.publishedAt = new Date().toISOString();
+        record.publishedPath = result.path;
+        record.commitUrl = result.commitUrl;
+        this.apps = this.apps.filter(app => app.submissionId !== record.id);
+        this.saveSubmissions();
+        this.saveApps();
+        this.syncFromGithub({ silent: true }).then(() => this.loadOverrides());
+        this.$nextTick(() => refreshIcons());
+        return true;
+      } catch (error) {
+        console.warn('GitHub auto-publish failed.', error);
+        alert(`Publishing to GitHub failed: ${error.message}\n\nNothing is lost — the resource stays approved on this device. You can retry, or publish manually with “Copy metadata” + “Upload to GitHub”.`);
+        return false;
+      } finally {
+        this.publishingSubmissionId = '';
+        this.$nextTick(() => refreshIcons());
+      }
     },
 
     async loadAppFiles(repo) {
@@ -1140,7 +1339,7 @@ export function schoolCloud() {
       this.apps.unshift(libraryItemFromSubmission(record));
     },
 
-    approveSubmission(id) {
+    async approveSubmission(id) {
       if (!this.requireAdmin()) return;
       const record = this.submissions.find(item => item.id === id);
       if (!record || record.status !== 'pending') return;
@@ -1153,7 +1352,20 @@ export function schoolCloud() {
       this.saveApps();
       this.$nextTick(() => refreshIcons());
 
-      alert(`Approved. “${record.title}” is now in the library and searchable immediately.\n\nTo make it appear on every device, upload the file to the apps folder on GitHub and paste the copied metadata into library.json (use “Copy metadata” next to the submission).`);
+      // With a GitHub token connected, approval publishes to the public
+      // repository in the same step. Any failure falls back to the manual
+      // copy/paste flow — the approval itself always stands.
+      if (this.autoPublishReady) {
+        const published = await this.publishSubmissionToGithub(id);
+        if (published) {
+          alert(`Approved and published. “${record.title}” was uploaded to the apps folder and its metadata merged into library.json — it will appear on every device once GitHub Pages redeploys (usually 1–2 minutes).`);
+          return;
+        }
+        // publishSubmissionToGithub already explained the failure.
+        return;
+      }
+
+      alert(`Approved. “${record.title}” is now in the library and searchable immediately.\n\nTo make it appear on every device, connect GitHub Auto-Publish in Settings — or upload the file to the apps folder on GitHub and paste the copied metadata into library.json (use “Copy metadata” next to the submission).`);
     },
 
     declineSubmission(id) {
@@ -1422,6 +1634,9 @@ export function schoolCloud() {
       } catch (error) {
         console.warn('Could not clear the sign-in session.', error);
       }
+      // Signing out forgets the GitHub token too — it belongs to the
+      // administrator's session, not to the browser.
+      this.disconnectGithub();
       this.$nextTick(() => refreshIcons());
     },
 

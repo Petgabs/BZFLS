@@ -23,7 +23,7 @@ GitHub:
 | 4. Automatic preview | A live card preview (exactly how the resource will appear) plus a sandboxed file preview for PDFs and HTML. |
 | 5. Submit for publication | The submission joins the review queue with status *pending*. |
 | 6. Administrator approves | One click in **Review Submissions**. Approved resources enter the library and are searchable immediately; declines record a reason for the teacher. |
-| 7. Publish everywhere | Optional: the administrator copies the generated `library.json` metadata and uploads the file to `apps/` on GitHub, making the resource available on every device. |
+| 7. Publish everywhere | **Automatic with GitHub Auto-Publish** (Settings): approval commits the file to `apps/` and merges the curated metadata into `library.json` via the GitHub Contents API, and the submission is marked published with a link to the commit. Without a connected token, the manual flow remains: copy the generated `library.json` metadata and upload the file on GitHub. |
 
 **The file name is never the primary title.** `16G.pdf` tells a student far
 less than “Continuous Probability Distributions — Exercise 16G Solutions”, so
@@ -73,9 +73,18 @@ This is a GitHub Pages site, so there is no server-side account or database:
   locked-down browsers. Metadata lives in localStorage.
 * Approved submissions are searchable **immediately on that device** and
   survive reloads.
-* To reach *every* device, the administrator publishes through GitHub (the
-  “Copy metadata” / “Upload to GitHub” / “Done — published” buttons) — after
-  which the repository copy becomes canonical.
+* To reach *every* device, the administrator publishes through GitHub — after
+  which the repository copy becomes canonical. Two ways:
+  * **GitHub Auto-Publish** (Settings → GitHub Auto-Publish): connect a
+    fine-grained Personal Access Token scoped to this repository with the
+    single permission **Contents: Read and write**. Approving a submission
+    then commits the file to `apps/` and merges its metadata into
+    `library.json` automatically (`assets/js/lib/githubPublish.js`). The
+    token lives in `sessionStorage` only — never in the site, never in
+    localStorage — and is forgotten when the tab closes or the
+    administrator signs out.
+  * **Manual fallback**: the “Copy metadata” / “Upload to GitHub” /
+    “Done — published” buttons, exactly as before.
 
 ### Visibility
 
