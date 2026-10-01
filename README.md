@@ -19,11 +19,32 @@ GitHub:
 | --- | --- |
 | 1. Sign in | Separate **Teacher Login** button (shared staff account, kept in `assets/js/config.js` as a salted SHA-256 digest). Teachers can upload but never delete. |
 | 2. Upload resource | Any supported classroom file — PDF, Word, Excel, PowerPoint or HTML, up to 50 MB. |
-| 3. Add structured metadata | Title, description, subject, grade/year, topic, resource type, language, owner, department, academic year, keywords, visibility, version, review date, licence, accessibility notes. Subject/year suggestions are offered automatically. |
-| 4. Automatic preview | A live card preview (exactly how the resource will appear) plus a sandboxed file preview for PDFs and HTML. |
-| 5. Submit for publication | The submission joins the review queue with status *pending*. |
-| 6. Administrator approves | One click in **Review Submissions**. Approved resources enter the library and are searchable immediately; declines record a reason for the teacher. |
-| 7. Publish everywhere | **Automatic with GitHub Auto-Publish** (Settings): approval commits the file to `apps/` and merges the curated metadata into `library.json` via the GitHub Contents API, and the submission is marked published with a link to the commit. Without a connected token, the manual flow remains: copy the generated `library.json` metadata and upload the file on GitHub. |
+| 3. Classify it | **Subject** and **Year Level** are two required dropdowns with a fixed vocabulary (below) — nothing reaches the library unclassified. |
+| 4. Add the remaining metadata | Title, description, topic, resource type, language, owner, department, academic year, keywords, visibility, version, review date, licence, accessibility notes. Subject/year suggestions are offered automatically. |
+| 5. Automatic preview | A live card preview (exactly how the resource will appear) plus a sandboxed file preview for PDFs and HTML. |
+| 6. Submit for publication | The submission joins the review queue with status *pending*. |
+| 7. Administrator approves | One click in **Review Submissions**. Approved resources enter the library and are searchable immediately; declines record a reason for the teacher. |
+| 8. Publish everywhere | **Automatic with GitHub Auto-Publish** (Settings): approval commits the file to `apps/` and merges the curated metadata into `library.json` via the GitHub Contents API, and the submission is marked published with a link to the commit. Without a connected token, the manual flow remains: copy the generated `library.json` metadata and upload the file on GitHub. |
+
+### Classification vocabulary
+
+The **Classify it** step is deliberately just two dropdowns, because a free-text
+subject box produces “Maths”, “mathematics” and “MATHS” as three different
+facets:
+
+| Field | Options |
+| --- | --- |
+| **Subject** | Mathematics · EALD/English · CAL · BS · VA · PHY · MEX · Others |
+| **Year Level** | Year 9 · Year 10 · Year 11 · Year 12 |
+
+Both are required. They live in `SUBJECT_OPTIONS` and `YEAR_LEVEL_OPTIONS` in
+[`assets/js/lib/submissions.js`](assets/js/lib/submissions.js) — add a line
+there to add an option site-wide. The suggestion chip beside each dropdown only
+ever proposes a value the dropdown actually contains; when the inferred subject
+has no equivalent in the school's list, no suggestion is offered at all.
+
+Topic moved to *Describe the resource*; resource type and language moved to
+*Publication details*. No metadata field was lost.
 
 **The file name is never the primary title.** `16G.pdf` tells a student far
 less than “Continuous Probability Distributions — Exercise 16G Solutions”, so
@@ -39,6 +60,7 @@ file name is kept as secondary, searchable text.
 | Delete files or submissions | ✖ | ✔ |
 | Approve / decline submissions | ✖ | ✔ |
 | Dashboard, settings, repository sync | ✖ | ✔ |
+| Save / change / delete the shared publishing token | ✖ | ✔ |
 
 Both accounts are gated client-side (salted SHA-256 digests, no plaintext
 password in the repository). The teacher role has no destructive action at
@@ -72,6 +94,99 @@ device picks it up once GitHub Pages redeploys (usually 1–2 minutes).
 Without a connected token, approval still publishes to the library
 immediately on that device, with the manual copy/paste flow offered as the
 fallback to reach every device.
+
+### One shared publishing token, saved in the repository
+
+Pasting a token into every tab, on every device, every day does not scale. So
+the administrator can save **one** fine-grained token into the repository
+itself and let the teacher login unlock it everywhere.
+
+**Settings → GitHub Auto-Publish → Token saved in GitHub Cloud**
+
+| Button | What it commits |
+| --- | --- |
+| **Save Token to GitHub Cloud** | Verifies the token against the repository, encrypts it with the current teacher password, and commits `assets/data/cloud-token.json`. |
+| **Change to a new token** | Same thing over the top of the old file — one commit, the previous token is gone from the repository. |
+| **Delete from GitHub Cloud** | Deletes the file in one commit and disconnects this session immediately. |
+| **Unlock** | Decrypts the saved token on a device that has it locked (administrators enter the teacher password). |
+
+Everything is a real commit through the Contents API, so the repository, the
+GitHub Pages site and every other browser converge on the same answer as soon
+as the deploy lands (usually 1–2 minutes). The service worker never caches
+that file, so a deletion is never served from a stale cache.
+
+#### Why the committed file is safe to publish
+
+**A raw Personal Access Token must never be committed to a public
+repository.** GitHub's secret scanning revokes a plaintext PAT within seconds
+of it appearing in a public repo, and until it does, anyone who can read the
+repository can write to it.
+
+So the file that is committed never contains the token. It contains
+AES-256-GCM ciphertext whose key is derived from the shared teacher password:
+
+```
+teacher password ──PBKDF2-SHA256, 310 000 rounds, 16-byte salt──▶ AES-256 key
+                                                                      │
+       assets/data/cloud-token.json  ──(12-byte IV, AES-GCM)──────────┴──▶ token
+```
+
+```jsonc
+{
+  "version": 1,
+  "cipher": "AES-GCM-256",
+  "kdf": "PBKDF2-SHA256",
+  "iterations": 310000,
+  "salt": "…", "iv": "…", "ciphertext": "…",
+  "fingerprint": "9f2c41ab77e0",   // first 12 hex of SHA-256(token), one-way
+  "savedAt": "2026-10-01T08:30:00.000Z"
+}
+```
+
+The file holds no `github_pat_` prefix for a scanner to match and no fragment
+of the token — the `fingerprint` is a one-way hash, shown in Settings purely so
+an administrator can confirm *which* token is live without the site ever
+displaying it. The decryption helpers refuse a tampered ciphertext, an unknown
+cipher, a future file version, and a file whose `iterations` have been lowered
+to make it brute-forceable (`assets/js/lib/tokenVault.js`).
+
+#### What this does and does not protect
+
+* **It does** mean the published file is useless on its own, that GitHub will
+  not revoke the token, and that access is gated by the same teacher login
+  that already gates uploads.
+* **It does not** make the token secret from people who know the teacher
+  password. Anyone who can sign in as a teacher holds, in that browser
+  session, a token that can write to the repository. Treat the teacher
+  password as what it now is: the key to the repository. Use a strong one,
+  rotate it when staff leave, and keep the token scoped to **this repository
+  only** with the single permission **Contents: Read and write** — nothing
+  else is needed, and nothing else should be granted.
+* Prefer the per-tab **“Use in this tab only”** button instead if you would
+  rather no token were ever stored anywhere.
+
+#### Rotating and revoking
+
+Changing the teacher password in **Settings → Teacher Access** automatically
+re-encrypts the saved token with the new password, in the same action, so
+teachers keep publishing without interruption. If the token is not unlocked in
+that session the site says so loudly, and the vault must be saved again.
+
+Deleting the file stops any device from unlocking the token — it does **not**
+revoke the token. Revoke it on
+[github.com](https://github.com/settings/personal-access-tokens) as well; the
+Settings panel links straight there.
+
+#### Where teacher uploads go
+
+By default (`REQUIRE_TEACHER_APPROVAL = true`,
+`PUBLISH_TEACHER_UPLOADS_IMMEDIATELY = false`) nothing reaches GitHub until an
+administrator approves it — the shared token simply means approval publishes
+from any device without pasting anything. Setting
+`PUBLISH_TEACHER_UPLOADS_IMMEDIATELY = true` in `assets/js/config.js` makes a
+teacher's submission commit to `apps/` + `library.json` the moment it is
+submitted; the pipeline is already wired up, so that one line is the whole
+change.
 
 ### Changing the teacher login
 
@@ -111,7 +226,10 @@ This is a GitHub Pages site, so there is no server-side account or database:
     `library.json` automatically (`assets/js/lib/githubPublish.js`). The
     token lives in `sessionStorage` only — never in the site, never in
     localStorage — and is forgotten when the tab closes or the
-    administrator signs out.
+    administrator signs out. **Save Token to GitHub Cloud** additionally
+    stores it in the repository as encrypted bytes so every device shares
+    one token; see
+    [One shared publishing token](#one-shared-publishing-token-saved-in-the-repository).
   * **Manual fallback**: the “Copy metadata” / “Upload to GitHub” /
     “Done — published” buttons, exactly as before.
 
@@ -132,7 +250,7 @@ private, do not publish it to the repository.
 | Previews | In-browser preview for PDFs, mini apps and Office documents; richer resource cards |
 | Dependencies | Alpine, Lucide and Tailwind are bundled locally — no CDN at runtime |
 | States | Skeleton loaders, explicit error + retry, offline banner, service-worker caching |
-| Quality | Automated tests including axe-core accessibility checks (198 in total) |
+| Quality | Automated tests including axe-core accessibility checks (291 in total) |
 | Counters | Pluggable backend with a managed Postgres (Supabase) adapter |
 
 ---
@@ -275,12 +393,14 @@ npm test
 | Suite | Covers |
 | --- | --- |
 | `tests/metadata.test.js` | Subject/year inference, curated overrides |
+| `tests/submissions.test.js` | Draft validation, the subject/year vocabulary, publishing shapes |
+| `tests/tokenVault.test.js` | Token encryption: no plaintext published, wrong/tampered input refused |
 | `tests/search.test.js` | Query parsing, ranking, facets, sorting |
 | `tests/counters.test.js` | All three backends and the fallback chain |
 | `tests/format.test.js` | Display formatting |
 | `tests/preview.test.js` | Preview strategy and iframe sandboxing |
 | `tests/accessibility.test.js` | axe-core over the expanded markup |
-| `tests/integration.test.js` | Real Alpine + real `index.html` in jsdom |
+| `tests/integration.test.js` | Real Alpine + real `index.html` in jsdom, including the full save → unlock → replace → delete cycle for the shared token |
 
 The accessibility suite expands `<template x-for>` blocks and resolves Alpine
 bindings before running axe, so it checks the DOM users actually get rather
@@ -295,8 +415,15 @@ instead.
 
 ## Security notes
 
-- No GitHub Personal Access Token exists anywhere in this site. Uploads and
-  deletions link out to github.com, where GitHub performs the authorisation.
-- The admin password is stored only as a salted SHA-256 digest.
+- **No token is embedded in the site's source.** A token only exists in the
+  repository if an administrator deliberately saves one, and then only as
+  AES-256-GCM ciphertext behind a PBKDF2-SHA256 key — never in the clear. See
+  [One shared publishing token](#one-shared-publishing-token-saved-in-the-repository)
+  for exactly what that protects and what it does not.
+- A token held in a browser lives in `sessionStorage` only, is sent only to
+  `api.github.com`, and is forgotten when the tab closes or staff sign out.
+- The admin and teacher passwords are stored only as salted SHA-256 digests.
+- The teacher password is also the key to the saved publishing token, so it is
+  a repository credential: make it strong and rotate it when staff leave.
 - Mini-app previews run in an iframe **without** `allow-same-origin`, so
   third-party HTML cannot reach this site's storage or admin session.

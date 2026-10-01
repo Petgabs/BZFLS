@@ -1394,44 +1394,6 @@
                                 </a>
                             </div>
 
-                            <!-- Save the pasted token into the repository -->
-                            <div class="bg-indigo-50/60 border border-indigo-100 rounded-lg p-4 space-y-3">
-                                <p class="text-xs text-indigo-900 leading-relaxed">
-                                    <strong>Save it to GitHub Cloud</strong> to share one publishing token with the whole school. It is encrypted with the
-                                    teacher password before it is committed to <code x-text="cloudTokenPath"></code>, so everyone who signs in with the
-                                    teacher login publishes through it — on any device, without ever seeing the token.
-                                </p>
-                                <div>
-                                    <label for="cloud-token-password" class="block text-xs font-medium text-slate-600 mb-1">Current teacher password <span class="text-red-500" aria-hidden="true">*</span></label>
-                                    <div class="relative">
-                                        <input id="cloud-token-password" :type="cloudToken.showPassword ? 'text' : 'password'" x-model="cloudToken.password"
-                                               autocomplete="off" spellcheck="false" placeholder="The password teachers sign in with"
-                                               aria-describedby="cloud-token-password-hint"
-                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm pr-10"
-                                               :class="cloudToken.error ? 'border-red-300' : 'border-slate-200'">
-                                        <button type="button" @click="toggleCloudTokenPassword()"
-                                                :aria-label="cloudToken.showPassword ? 'Hide the password' : 'Show the password'"
-                                                class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700 rounded-md focus-ring">
-                                            <i :data-lucide="cloudToken.showPassword ? 'eye-off' : 'eye'" class="w-4 h-4" aria-hidden="true"></i>
-                                        </button>
-                                    </div>
-                                    <p id="cloud-token-password-hint" class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-                                        This is the key that unlocks the token. It is checked against the current teacher login and never stored.
-                                    </p>
-                                </div>
-                                <div class="flex flex-col sm:flex-row gap-2">
-                                    <button type="button" @click="saveCloudToken()" :disabled="cloudToken.saving"
-                                            class="flex-1 inline-flex items-center justify-center gap-2 bg-indigo-600 text-white py-2.5 rounded-lg font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 focus-ring">
-                                        <i data-lucide="cloud-upload" class="w-4 h-4" :class="cloudToken.saving && 'animate-pulse'" aria-hidden="true"></i>
-                                        <span x-text="cloudToken.saving ? 'Saving to GitHub…' : (cloudToken.exists ? 'Save and replace in GitHub Cloud' : 'Save Token to GitHub Cloud')"></span>
-                                    </button>
-                                    <button type="button" x-show="cloudToken.replacing" x-cloak @click="cancelCloudTokenReplace()"
-                                            class="sm:w-32 inline-flex items-center justify-center gap-2 border border-slate-300 text-slate-700 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors focus-ring">
-                                        Cancel
-                                    </button>
-                                </div>
-                                <p x-show="cloudToken.error" x-text="cloudToken.error" class="text-sm text-red-600" role="alert"></p>
-                            </div>
                         </div>
 
                         <!-- Connected -->
@@ -1475,6 +1437,52 @@
                                     </span>
                                 </div>
                                 <p x-show="cloudToken.notice" x-text="cloudToken.notice" x-cloak class="text-xs text-emerald-700 mt-3" role="status"></p>
+                                <p x-show="cloudToken.error" x-text="cloudToken.error" x-cloak class="text-sm text-red-600 mt-3" role="alert"></p>
+                            </div>
+
+                            <!-- Save the token into the repository -->
+                            <div x-show="!cloudToken.exists || cloudToken.replacing" class="bg-indigo-50/60 border border-indigo-100 rounded-lg p-4 space-y-3 mb-3">
+                                <p class="text-xs text-indigo-900 leading-relaxed">
+                                    <strong>Save the token to GitHub Cloud</strong> to share one publishing token with the whole school. It is encrypted with the
+                                    teacher password before it is committed to <code x-text="cloudTokenPath"></code>, so everyone who signs in with the
+                                    teacher login publishes through it — on any device, without ever seeing the token.
+                                </p>
+                                <p class="text-xs font-medium" aria-live="polite"
+                                   :class="githubAuth.token ? 'text-emerald-700' : 'text-amber-700'"
+                                   x-text="!githubAuth.token
+                                       ? 'Paste the fine-grained Personal Access Token above first.'
+                                       : (githubAuth.connected && !cloudToken.replacing
+                                           ? 'Ready: the token connected in this tab will be encrypted and saved.'
+                                           : 'Ready: the token entered above will be encrypted and saved.')"></p>
+                                <div>
+                                    <label for="cloud-token-password" class="block text-xs font-medium text-slate-600 mb-1">Current teacher password <span class="text-red-500" aria-hidden="true">*</span></label>
+                                    <div class="relative">
+                                        <input id="cloud-token-password" :type="cloudToken.showPassword ? 'text' : 'password'" x-model="cloudToken.password"
+                                               autocomplete="off" spellcheck="false" placeholder="The password teachers sign in with"
+                                               aria-describedby="cloud-token-password-hint"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm pr-10"
+                                               :class="cloudToken.error ? 'border-red-300' : 'border-slate-200'">
+                                        <button type="button" @click="toggleCloudTokenPassword()"
+                                                :aria-label="cloudToken.showPassword ? 'Hide the password' : 'Show the password'"
+                                                class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700 rounded-md focus-ring">
+                                            <i :data-lucide="cloudToken.showPassword ? 'eye-off' : 'eye'" class="w-4 h-4" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <p id="cloud-token-password-hint" class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                                        This is the key that unlocks the token. It is checked against the current teacher login and never stored.
+                                    </p>
+                                </div>
+                                <div class="flex flex-col sm:flex-row gap-2">
+                                    <button type="button" @click="saveCloudToken()" :disabled="cloudToken.saving"
+                                            class="flex-1 inline-flex items-center justify-center gap-2 bg-indigo-600 text-white py-2.5 rounded-lg font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 focus-ring">
+                                        <i data-lucide="cloud-upload" class="w-4 h-4" :class="cloudToken.saving && 'animate-pulse'" aria-hidden="true"></i>
+                                        <span x-text="cloudToken.saving ? 'Saving to GitHub…' : (cloudToken.exists ? 'Save and replace in GitHub Cloud' : 'Save Token to GitHub Cloud')"></span>
+                                    </button>
+                                    <button type="button" x-show="cloudToken.replacing" x-cloak @click="cancelCloudTokenReplace()"
+                                            class="sm:w-32 inline-flex items-center justify-center gap-2 border border-slate-300 text-slate-700 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors focus-ring">
+                                        Cancel
+                                    </button>
+                                </div>
                             </div>
 
                             <!-- Unlock (administrators: the key is the teacher password) -->

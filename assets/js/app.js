@@ -246,6 +246,7 @@ export function schoolCloud() {
       deleting: false,
       unlocking: false,
       replacing: false,   // the administrator is swapping in a new token
+      previousToken: '',  // live token parked while a replacement is typed
       error: '',
       notice: '',
       password: '',       // teacher password used to lock the vault (admin)
@@ -921,6 +922,7 @@ export function schoolCloud() {
       this.githubAuth = { token: '', connected: false, login: '', verifying: false, error: '', showToken: false, source: '' };
       this.cloudToken.unlocked = false;
       this.cloudToken.replacing = false;
+      this.cloudToken.previousToken = '';
       this.cloudToken.password = '';
       this.cloudToken.unlockPassword = '';
       try {
@@ -1121,6 +1123,7 @@ export function schoolCloud() {
         this.cloudToken.savedAt = summary.savedAt;
         this.cloudToken.savedBy = summary.savedBy;
         this.cloudToken.replacing = false;
+        this.cloudToken.previousToken = '';
         this.cloudToken.password = '';
         this.cloudToken.showPassword = false;
         this.cloudToken.notice = existing.exists
@@ -1159,6 +1162,9 @@ export function schoolCloud() {
       this.cloudToken.error = '';
       this.cloudToken.notice = '';
       this.cloudToken.password = '';
+      // Park the live token so cancelling leaves the session exactly as it
+      // was, rather than "connected" with an empty token.
+      this.cloudToken.previousToken = this.githubAuth.token;
       this.githubAuth.token = '';
       this.githubAuth.error = '';
       this.$nextTick(() => {
@@ -1171,7 +1177,8 @@ export function schoolCloud() {
       this.cloudToken.replacing = false;
       this.cloudToken.password = '';
       this.cloudToken.error = '';
-      this.githubAuth.token = this.usingCloudToken ? this.githubAuth.token : '';
+      this.githubAuth.token = this.cloudToken.previousToken || '';
+      this.cloudToken.previousToken = '';
       this.$nextTick(() => refreshIcons());
     },
 
@@ -1218,9 +1225,9 @@ export function schoolCloud() {
         this.cloudToken.savedAt = '';
         this.cloudToken.savedBy = '';
         this.cloudToken.replacing = false;
-        this.cloudToken.notice = 'The shared token was deleted from the repository. Revoke it on github.com too.';
 
-        // Disconnect everywhere this tab could still use it.
+        // Disconnect everywhere this tab could still use it, then restore the
+        // message disconnectGithub() does not know about.
         this.disconnectGithub();
         this.cloudToken.notice = 'The shared token was deleted from the repository. Revoke it on github.com too.';
 
