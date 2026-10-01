@@ -124,6 +124,11 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // The shared publishing token must never be served from a cache: when the
+  // administrator saves, replaces or deletes it, every device has to see the
+  // change on the next load, not whatever was cached before.
+  if (url.pathname.endsWith('/assets/data/cloud-token.json')) return;
+
   // Cross-origin requests (e.g. the Office viewer) go straight to the network.
   if (url.origin !== self.location.origin) return;
 

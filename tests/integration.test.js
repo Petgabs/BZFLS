@@ -649,3 +649,288 @@ describe('administrator cloud file deletion and dashboard features', () => {
     expect(component.apps.length).toBe(initialCount - 1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The shared publishing token: saved into the repository by the
+// administrator, unlocked by the teacher login on every other device.
+// ---------------------------------------------------------------------------
+
+describe('shared cloud publishing token', () => {
+  const CLOUD_PATH = 'assets/data/cloud-token.json';
+  const PASTED_TOKEN = 'github_pat_11CLOUD000examplevalue_ZZ9';
+  const TEACHER_PASSWORD = 'hoc-teacher-2026';
+
+  /** Stands in for the file in the repository. */
+  let repoVaultText;
+  let lastCommitMessage;
+  let deleteCalls;
+
+  function githubFetchStub() {
+    return vi.fn(async (url, options = {}) => {
+      const href = String(url);
+      const method = options.method || 'GET';
+      const isVaultPath = href.includes(CLOUD_PATH);
+
+      // The deployed copy on GitHub Pages.
+      if (isVaultPath && href.includes('refresh=')) {
+        if (!repoVaultText) return { ok: false, status: 404, text: async () => 'Not Found' };
+        return { ok: true, status: 200, text: async () => repoVaultText };
+      }
+
+      if (isVaultPath && method === 'PUT') {
+        const body = JSON.parse(options.body);
+        lastCommitMessage = body.message;
+        repoVaultText = Buffer.from(body.content, 'base64').toString('utf8');
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ commit: { sha: 'vault-commit', html_url: 'https://github.test/c' }, content: { sha: 'vault-sha' } })
+        };
+      }
+
+      if (isVaultPath && method === 'DELETE') {
+        deleteCalls += 1;
+        lastCommitMessage = JSON.parse(options.body).message;
+        repoVaultText = null;
+        return { ok: true, status: 200, json: async () => ({ commit: { sha: 'del-commit', html_url: 'https://github.test/d' } }) };
+      }
+
+      if (isVaultPath) {
+        if (!repoVaultText) {
+          return { ok: false, status: 404, text: async () => 'Not Found', json: async () => ({ message: 'Not Found' }) };
+        }
+        const envelope = {
+          sha: 'vault-sha',
+          encoding: 'base64',
+          content: Buffer.from(repoVaultText, 'utf8').toString('base64')
+        };
+        return { ok: true, status: 200, text: async () => JSON.stringify(envelope), json: async () => envelope };
+      }
+
+      if (href.endsWith('/repos/Petgabs/BZFLS')) {
+        return { ok: true, status: 200, json: async () => ({ full_name: 'Petgabs/BZFLS', permissions: { push: true } }) };
+      }
+      if (href.endsWith('/user')) {
+        return { ok: true, status: 200, json: async () => ({ login: 'petgabs' }) };
+      }
+      if (href.includes('apps.json')) {
+        return { ok: true, status: 200, json: async () => MANIFEST };
+      }
+      if (href.includes('library.json')) {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '{}' };
+      }
+      throw new Error('network disabled in tests');
+    });
+  }
+
+  beforeEach(async () => {
+    repoVaultText = null;
+    lastCommitMessage = '';
+    deleteCalls = 0;
+    vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'confirm').mockImplementation(() => true);
+    vi.stubGlobal('fetch', githubFetchStub());
+
+    // Known teacher password on this device, so the vault has a key.
+    component.role = 'admin';
+    component.teacherCreds = { username: 'hoc-teacher', password: TEACHER_PASSWORD, confirm: TEACHER_PASSWORD };
+    await component.saveTeacherCredentials();
+
+    component.disconnectGithub();
+    component.cloudToken.checked = false;
+    component.cloudToken.exists = false;
+    component.cloudToken.payload = null;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    component.disconnectGithub();
+    component.teacherOverride = null;
+    window.localStorage.removeItem('schoolcloud_teacher_override');
+  });
+
+  async function saveTokenAsAdmin(token = PASTED_TOKEN) {
+    component.role = 'admin';
+    component.githubAuth.token = token;
+    component.cloudToken.password = TEACHER_PASSWORD;
+    return component.saveCloudToken();
+  }
+
+  it('refuses to save without a token or with the wrong teacher password', async () => {
+    component.role = 'admin';
+    component.githubAuth.token = '';
+    component.cloudToken.password = TEACHER_PASSWORD;
+    expect(await component.saveCloudToken()).toBe(false);
+    expect(component.cloudToken.error).toMatch(/paste the fine-grained/i);
+
+    component.githubAuth.token = PASTED_TOKEN;
+    component.cloudToken.password = '';
+    expect(await component.saveCloudToken()).toBe(false);
+    expect(component.cloudToken.error).toMatch(/teacher password/i);
+
+    component.cloudToken.password = 'not-the-teacher-password';
+    expect(await component.saveCloudToken()).toBe(false);
+    expect(component.cloudToken.error).toMatch(/not the current teacher password/i);
+    expect(repoVaultText).toBeNull();
+
+    component.githubAuth.token = 'definitely not a token';
+    component.cloudToken.password = TEACHER_PASSWORD;
+    expect(await component.saveCloudToken()).toBe(false);
+    expect(repoVaultText).toBeNull();
+  });
+
+  it('commits the token to the repository without ever writing it in the clear', async () => {
+    expect(await saveTokenAsAdmin()).toBe(true);
+
+    expect(repoVaultText).toBeTruthy();
+    expect(repoVaultText).not.toContain(PASTED_TOKEN);
+    expect(repoVaultText).not.toContain('github_pat_');
+    expect(lastCommitMessage).toMatch(/shared publishing token/i);
+
+    const published = JSON.parse(repoVaultText);
+    expect(published.cipher).toBe('AES-GCM-256');
+    expect(published.kdf).toBe('PBKDF2-SHA256');
+    expect(published.iterations).toBeGreaterThanOrEqual(310000);
+
+    // The administrator's own tab is now publishing with it.
+    expect(component.cloudToken.exists).toBe(true);
+    expect(component.cloudToken.unlocked).toBe(true);
+    expect(component.usingCloudToken).toBe(true);
+    expect(component.autoPublishReady).toBe(true);
+    expect(component.cloudTokenStatusLabel).toMatch(/unlocked/i);
+  });
+
+  it('hands the token to any device where a teacher signs in', async () => {
+    await saveTokenAsAdmin();
+
+    // A different device: no session, no memory of the token.
+    component.logout();
+    component.cloudToken.checked = false;
+    expect(component.githubAuth.connected).toBe(false);
+
+    component.loginMode = 'teacher';
+    component.loginForm = { username: 'hoc-teacher', password: TEACHER_PASSWORD };
+    await component.login();
+
+    // Unlocking runs in the background so a slow network cannot block the
+    // sign-in itself; give the key derivation time to finish.
+    for (let attempt = 0; attempt < 60 && !component.githubAuth.connected; attempt += 1) {
+      await new Promise(done => setTimeout(done, 50));
+    }
+
+    expect(component.role).toBe('teacher');
+    expect(component.githubAuth.token).toBe(PASTED_TOKEN);
+    expect(component.usingCloudToken).toBe(true);
+    expect(window.sessionStorage.getItem('schoolcloud_github_token')).toBe(PASTED_TOKEN);
+  });
+
+  it('stays locked for the wrong password', async () => {
+    await saveTokenAsAdmin();
+    component.disconnectGithub();
+    component.cloudToken.unlockPassword = 'guessing';
+
+    component.role = 'admin';
+    await component.unlockCloudTokenFromForm();
+
+    expect(component.githubAuth.connected).toBe(false);
+    expect(component.cloudToken.unlocked).toBe(false);
+    expect(component.cloudToken.error).toMatch(/does not unlock/i);
+  });
+
+  it('replaces the saved token with a new one', async () => {
+    await saveTokenAsAdmin();
+    const first = repoVaultText;
+
+    component.startCloudTokenReplace();
+    expect(component.cloudToken.replacing).toBe(true);
+    expect(component.githubAuth.token).toBe('');
+
+    const replacement = 'github_pat_11SECOND00examplevalue_YY8';
+    expect(await saveTokenAsAdmin(replacement)).toBe(true);
+
+    expect(repoVaultText).not.toBe(first);
+    expect(repoVaultText).not.toContain(replacement);
+    expect(component.cloudToken.replacing).toBe(false);
+    expect(component.githubAuth.token).toBe(replacement);
+
+    // The old token no longer opens anything; the new one is what teachers get.
+    component.disconnectGithub();
+    component.cloudToken.unlockPassword = TEACHER_PASSWORD;
+    component.role = 'admin';
+    await component.unlockCloudTokenFromForm();
+    expect(component.githubAuth.token).toBe(replacement);
+  });
+
+  it('deletes the saved token from the repository and disconnects', async () => {
+    await saveTokenAsAdmin();
+
+    expect(await component.deleteCloudToken()).toBe(true);
+    expect(deleteCalls).toBe(1);
+    expect(repoVaultText).toBeNull();
+    expect(lastCommitMessage).toMatch(/delete the shared publishing token/i);
+
+    expect(component.cloudToken.exists).toBe(false);
+    expect(component.cloudToken.unlocked).toBe(false);
+    expect(component.githubAuth.connected).toBe(false);
+    expect(component.githubAuth.token).toBe('');
+    expect(window.sessionStorage.getItem('schoolcloud_github_token')).toBeNull();
+
+    // And nothing is left for another device to find.
+    component.cloudToken.checked = false;
+    expect(await component.loadCloudToken({ silent: true })).toBe(false);
+  });
+
+  it('will not delete without a working token to commit the deletion', async () => {
+    await saveTokenAsAdmin();
+    component.disconnectGithub();
+
+    expect(await component.deleteCloudToken()).toBe(false);
+    expect(deleteCalls).toBe(0);
+    expect(repoVaultText).toBeTruthy();
+    expect(component.cloudToken.error).toMatch(/unlock the saved token/i);
+  });
+
+  it('re-locks the saved token when the teacher password is rotated', async () => {
+    await saveTokenAsAdmin();
+    const before = repoVaultText;
+
+    const rotated = 'staffroom-rotated-2027';
+    component.role = 'admin';
+    component.teacherCreds = { username: 'hoc-teacher', password: rotated, confirm: rotated };
+    await component.saveTeacherCredentials();
+
+    expect(repoVaultText).not.toBe(before);
+    expect(repoVaultText).not.toContain(PASTED_TOKEN);
+    expect(lastCommitMessage).toMatch(/re-lock/i);
+
+    // The new password opens it; the old one no longer does.
+    component.disconnectGithub();
+    component.cloudToken.unlockPassword = TEACHER_PASSWORD;
+    component.role = 'admin';
+    await component.unlockCloudTokenFromForm();
+    expect(component.githubAuth.connected).toBe(false);
+
+    component.cloudToken.unlockPassword = rotated;
+    await component.unlockCloudTokenFromForm();
+    expect(component.githubAuth.token).toBe(PASTED_TOKEN);
+  });
+
+  it('finds a token saved by someone else on a cold start', async () => {
+    await saveTokenAsAdmin();
+    const published = repoVaultText;
+
+    // Pretend this browser has never seen it.
+    component.disconnectGithub();
+    component.cloudToken = {
+      ...component.cloudToken,
+      checked: false, exists: false, payload: null, fingerprint: '', savedAt: '', savedBy: ''
+    };
+    repoVaultText = published;
+
+    expect(await component.loadCloudToken({ silent: true })).toBe(true);
+    expect(component.cloudToken.exists).toBe(true);
+    expect(component.cloudToken.unlocked).toBe(false);
+    expect(component.cloudToken.fingerprint).toHaveLength(12);
+    expect(component.cloudTokenStatusLabel).toMatch(/locked/i);
+  });
+});

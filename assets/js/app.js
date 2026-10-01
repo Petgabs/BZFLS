@@ -28,11 +28,15 @@ import {
   TEACHER_SESSION_KEY,
   TEACHER_OVERRIDE_KEY,
   REQUIRE_TEACHER_APPROVAL,
+  PUBLISH_TEACHER_UPLOADS_IMMEDIATELY,
   APPS_STORAGE_KEY,
   SUBMISSIONS_STORAGE_KEY,
   UPLOAD_PREFS_KEY,
   GITHUB_CONFIG_KEY,
   GITHUB_TOKEN_SESSION_KEY,
+  GITHUB_TOKEN_SOURCE_SESSION_KEY,
+  CLOUD_TOKEN_PATH,
+  CLOUD_TOKEN_FINGERPRINT_SESSION_KEY,
   LIBRARY_CACHE_KEY
 } from './config.js';
 
@@ -91,8 +95,8 @@ import {
   overrideFromSubmission,
   submissionCounts,
   parseYearsInput,
-  suggestSubject,
-  suggestYears,
+  suggestSubjectOption,
+  suggestYearLevel,
   titleHint,
   FORM_OPTIONS,
   academicYearOptions
@@ -112,8 +116,19 @@ import {
   deleteFileFromGithub as runGithubDelete,
   normaliseToken,
   isFineGrainedToken,
-  blobToBase64
+  blobToBase64,
+  textToBase64,
+  base64ToText
 } from './lib/githubPublish.js';
+
+import {
+  encryptCloudToken,
+  decryptCloudToken,
+  tokenFingerprint,
+  serialiseVault,
+  parseVault,
+  vaultSummary
+} from './lib/tokenVault.js';
 
 // --- Admin hashing ----------------------------------------------------------
 
@@ -203,10 +218,41 @@ export function schoolCloud() {
       login: '',          // 'Connected as <login>' (cosmetic, may be empty)
       verifying: false,
       error: '',
-      showToken: false
+      showToken: false,
+      // 'manual' when pasted into this tab, 'vault' when unlocked from the
+      // shared token saved in the repository.
+      source: ''
     },
     publishingSubmissionId: '',
     deletingAppId: '',
+
+    // --- Shared cloud publishing token ----------------------------------------
+    // The administrator can save the fine-grained token into the repository
+    // itself (assets/data/cloud-token.json), encrypted with the shared
+    // teacher password. Every device then unlocks the same token at sign-in
+    // instead of each administrator pasting their own. See lib/tokenVault.js.
+    cloudTokenPath: CLOUD_TOKEN_PATH,
+    cloudToken: {
+      checked: false,     // have we looked for the file yet?
+      loading: false,
+      exists: false,
+      sha: '',            // blob SHA, needed to replace or delete the file
+      payload: null,      // the encrypted vault, as published
+      fingerprint: '',
+      savedAt: '',
+      savedBy: '',
+      unlocked: false,    // this session holds the decrypted token
+      saving: false,
+      deleting: false,
+      unlocking: false,
+      replacing: false,   // the administrator is swapping in a new token
+      error: '',
+      notice: '',
+      password: '',       // teacher password used to lock the vault (admin)
+      showPassword: false,
+      unlockPassword: '',
+      showUnlockPassword: false
+    },
 
     // --- Submissions -----------------------------------------------------------
     submissions: [],
@@ -432,6 +478,12 @@ export function schoolCloud() {
       }
       this.persistGithubConfig();
       this.loadGithubToken();
+
+      // Find the shared publishing token (if the administrator saved one) and
+      // unlock it for a teacher session that is already signed in on this
+      // device — the password is not available then, so the token kept in
+      // sessionStorage by loadGithubToken() is what carries the session over.
+      this.loadCloudToken({ silent: true });
 
       // Restore filters from the URL so searches are shareable.
       this.readFiltersFromUrl();
@@ -801,9 +853,25 @@ export function schoolCloud() {
           this.githubAuth.token = token;
           // Trust the stored token for this tab; it was verified when saved.
           this.githubAuth.connected = true;
+          this.githubAuth.source = sessionStorage.getItem(GITHUB_TOKEN_SOURCE_SESSION_KEY) || 'manual';
+          if (this.githubAuth.source === 'vault') {
+            this.cloudToken.unlocked = true;
+            this.cloudToken.fingerprint =
+              sessionStorage.getItem(CLOUD_TOKEN_FINGERPRINT_SESSION_KEY) || this.cloudToken.fingerprint;
+          }
         }
       } catch (error) {
         console.warn('Session storage unavailable; GitHub auto-publish needs reconnecting.', error);
+      }
+    },
+
+    /** Remember the live token for this tab (never localStorage). */
+    rememberGithubToken(token, source) {
+      try {
+        sessionStorage.setItem(GITHUB_TOKEN_SESSION_KEY, token);
+        sessionStorage.setItem(GITHUB_TOKEN_SOURCE_SESSION_KEY, source);
+      } catch (error) {
+        console.warn('Could not keep the GitHub token for this session.', error);
       }
     },
 
@@ -836,11 +904,8 @@ export function schoolCloud() {
         const result = await this.buildGithubPublisher().verify();
         this.githubAuth.connected = true;
         this.githubAuth.login = result.login;
-        try {
-          sessionStorage.setItem(GITHUB_TOKEN_SESSION_KEY, token);
-        } catch (error) {
-          console.warn('Could not keep the GitHub token for this session.', error);
-        }
+        this.githubAuth.source = 'manual';
+        this.rememberGithubToken(token, 'manual');
       } catch (error) {
         this.githubAuth.connected = false;
         this.githubAuth.login = '';
@@ -853,9 +918,15 @@ export function schoolCloud() {
 
     /** Forget the token (sessionStorage + memory). */
     disconnectGithub() {
-      this.githubAuth = { token: '', connected: false, login: '', verifying: false, error: '', showToken: false };
+      this.githubAuth = { token: '', connected: false, login: '', verifying: false, error: '', showToken: false, source: '' };
+      this.cloudToken.unlocked = false;
+      this.cloudToken.replacing = false;
+      this.cloudToken.password = '';
+      this.cloudToken.unlockPassword = '';
       try {
         sessionStorage.removeItem(GITHUB_TOKEN_SESSION_KEY);
+        sessionStorage.removeItem(GITHUB_TOKEN_SOURCE_SESSION_KEY);
+        sessionStorage.removeItem(CLOUD_TOKEN_FINGERPRINT_SESSION_KEY);
       } catch (error) {
         console.warn('Could not clear the GitHub token.', error);
       }
@@ -865,6 +936,407 @@ export function schoolCloud() {
     toggleGithubToken() {
       this.githubAuth.showToken = !this.githubAuth.showToken;
       this.$nextTick(() => refreshIcons());
+    },
+
+    // --- Shared cloud publishing token ----------------------------------------
+    //
+    // "Save to GitHub Cloud" writes the administrator's fine-grained token
+    // into the repository as assets/data/cloud-token.json — encrypted with
+    // the shared teacher password, never in the clear. Signing in with the
+    // teacher login then unlocks it on any device, so staff publish through
+    // the site instead of each administrator pasting a token into each tab.
+    //
+    // Saving, replacing and deleting all go through the Contents API, so the
+    // repository, the GitHub Pages site and every other browser converge on
+    // the same answer as soon as the deploy lands (usually 1–2 minutes).
+
+    /** Public URL of the vault file in the repository. */
+    cloudTokenFileUrl() {
+      const repo = this.normalizeRepository(this.githubConfig.repo) || DEFAULT_GITHUB_REPO;
+      const safeRepo = repo.split('/').map(encodeURIComponent).join('/');
+      return `https://github.com/${safeRepo}/blob/main/${CLOUD_TOKEN_PATH}`;
+    },
+
+    /** Where to revoke a token that is being deleted or replaced. */
+    githubTokenSettingsUrl() {
+      return 'https://github.com/settings/personal-access-tokens';
+    },
+
+    get cloudTokenStatusLabel() {
+      if (!this.cloudToken.checked && this.cloudToken.loading) return 'Checking…';
+      if (!this.cloudToken.exists) return 'No token saved in the repository';
+      return this.cloudToken.unlocked ? 'Saved in the repository · unlocked here' : 'Saved in the repository · locked';
+    },
+
+    /** True when this session is publishing with the shared cloud token. */
+    get usingCloudToken() {
+      return this.githubAuth.connected && this.githubAuth.source === 'vault';
+    },
+
+    /**
+     * Read the published vault. The deployed site is tried first (no API
+     * rate limit, works for every visitor); the Contents API is the fallback
+     * so a freshly saved token is visible before GitHub Pages redeploys.
+     */
+    async loadCloudToken(options = {}) {
+      if (this.cloudToken.loading) return this.cloudToken.exists;
+      this.cloudToken.loading = true;
+      if (!options.silent) this.cloudToken.error = '';
+
+      try {
+        let payload = null;
+
+        try {
+          const response = await fetch(`./${CLOUD_TOKEN_PATH}?refresh=${Date.now()}`, { cache: 'no-store' });
+          if (response.ok) payload = parseVault(await response.text());
+        } catch (error) {
+          console.warn('The deployed cloud token file was unavailable.', error);
+        }
+
+        if (!payload) payload = await this.fetchCloudTokenFromApi();
+
+        const summary = vaultSummary(payload);
+        this.cloudToken.payload = summary.exists ? payload : null;
+        this.cloudToken.exists = summary.exists;
+        this.cloudToken.fingerprint = summary.fingerprint || this.cloudToken.fingerprint;
+        this.cloudToken.savedAt = summary.savedAt;
+        this.cloudToken.savedBy = summary.savedBy;
+        if (!summary.exists) {
+          this.cloudToken.sha = '';
+          this.cloudToken.unlocked = false;
+        }
+        return summary.exists;
+      } finally {
+        this.cloudToken.checked = true;
+        this.cloudToken.loading = false;
+        this.$nextTick(() => refreshIcons());
+      }
+    },
+
+    /** Unauthenticated Contents API read; returns the vault or null. */
+    async fetchCloudTokenFromApi() {
+      const repo = this.normalizeRepository(this.githubConfig.repo) || DEFAULT_GITHUB_REPO;
+      const [owner, repository] = repo.split('/');
+      const path = CLOUD_TOKEN_PATH.split('/').map(encodeURIComponent).join('/');
+      const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/contents/${path}?ref=main`;
+
+      try {
+        const response = await fetch(endpoint, {
+          cache: 'no-store',
+          headers: { Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28' }
+        });
+        if (!response.ok) return null;
+
+        // `Accept: raw` normally returns the file itself, but a proxy (or a
+        // cache) may hand back the regular JSON envelope instead — accept
+        // either rather than reporting "no token saved" by mistake.
+        const body = await response.text();
+        const direct = parseVault(body);
+        if (direct) return direct;
+
+        try {
+          const envelope = JSON.parse(body);
+          if (envelope?.encoding === 'base64' && envelope.content) {
+            return parseVault(base64ToText(envelope.content));
+          }
+        } catch {
+          /* Not the JSON envelope either. */
+        }
+        return null;
+      } catch (error) {
+        console.warn('Could not read the shared token from the GitHub API.', error);
+        return null;
+      }
+    },
+
+    /**
+     * Save (or replace) the shared token in the repository.
+     *
+     * The token in the input field is verified against the repository first —
+     * publishing a token that does not work would lock every other device
+     * out — then encrypted with the teacher password and committed.
+     */
+    async saveCloudToken() {
+      if (!this.requireAdmin()) return false;
+      if (this.cloudToken.saving) return false;
+
+      this.cloudToken.error = '';
+      this.cloudToken.notice = '';
+
+      const token = normaliseToken(this.githubAuth.token);
+      if (!token) {
+        this.cloudToken.error = 'Paste the fine-grained Personal Access Token above first.';
+        return false;
+      }
+      if (!isFineGrainedToken(token) && !/^gh[a-z]_/.test(token)) {
+        this.cloudToken.error = 'That does not look like a GitHub token. Fine-grained tokens start with “github_pat_”.';
+        return false;
+      }
+
+      const password = String(this.cloudToken.password || '');
+      if (!password) {
+        this.cloudToken.error = 'Enter the current teacher password — it is the key that unlocks the saved token.';
+        return false;
+      }
+
+      // The vault is only useful if teachers can actually open it, so the
+      // password must be the one the teacher login uses right now.
+      let digest;
+      try {
+        digest = await sha256Hex(`${TEACHER_HASH_SALT}::${this.effectiveTeacherUsername}::${password}`);
+      } catch (error) {
+        this.cloudToken.error = error.message;
+        return false;
+      }
+      if (!digestsMatch(digest, this.effectiveTeacherDigest)) {
+        this.cloudToken.error = 'That is not the current teacher password, so teachers would not be able to unlock the token. Use the password from Teacher Access below.';
+        return false;
+      }
+
+      this.cloudToken.saving = true;
+      try {
+        this.githubAuth.token = token;
+        const publisher = this.buildGithubPublisher();
+
+        // 1. The token must work before it is published to everyone.
+        const verified = await publisher.verify();
+
+        // 2. Encrypt, then commit over whatever is there now.
+        const payload = await encryptCloudToken({ token, password, savedBy: ADMIN_USERNAME });
+        const existing = await publisher.getFile(CLOUD_TOKEN_PATH);
+        const result = await publisher.putFile({
+          path: CLOUD_TOKEN_PATH,
+          contentBase64: textToBase64(serialiseVault(payload)),
+          sha: existing.exists ? existing.sha : '',
+          message: existing.exists
+            ? 'Replace the shared publishing token (via School Cloud System)'
+            : 'Save the shared publishing token (via School Cloud System)'
+        });
+
+        const summary = vaultSummary(payload);
+        this.cloudToken.payload = payload;
+        this.cloudToken.exists = true;
+        this.cloudToken.sha = result.contentSha || '';
+        this.cloudToken.fingerprint = summary.fingerprint;
+        this.cloudToken.savedAt = summary.savedAt;
+        this.cloudToken.savedBy = summary.savedBy;
+        this.cloudToken.replacing = false;
+        this.cloudToken.password = '';
+        this.cloudToken.showPassword = false;
+        this.cloudToken.notice = existing.exists
+          ? 'The saved token was replaced. Every device picks up the new one at the next sign-in.'
+          : 'Saved. Teachers and administrators on any device now unlock this token when they sign in.';
+
+        // This tab is now publishing with the shared token too.
+        this.githubAuth.connected = true;
+        this.githubAuth.login = verified.login;
+        this.githubAuth.source = 'vault';
+        this.githubAuth.error = '';
+        this.cloudToken.unlocked = true;
+        this.rememberGithubToken(token, 'vault');
+        try {
+          sessionStorage.setItem(CLOUD_TOKEN_FINGERPRINT_SESSION_KEY, summary.fingerprint);
+        } catch {
+          /* Cosmetic only. */
+        }
+
+        alert(`Token saved to GitHub Cloud.\n\nIt is stored at ${CLOUD_TOKEN_PATH}, encrypted with the teacher password — the file never contains the token itself.\n\nAnyone signing in with the teacher login now publishes through this token, on every device, once GitHub Pages redeploys (usually 1–2 minutes).`);
+        return true;
+      } catch (error) {
+        console.warn('Saving the shared token failed.', error);
+        this.cloudToken.error = `The token could not be saved to GitHub: ${error.message}`;
+        return false;
+      } finally {
+        this.cloudToken.saving = false;
+        this.$nextTick(() => refreshIcons());
+      }
+    },
+
+    /** Show the paste-a-new-token form so the saved token can be swapped. */
+    startCloudTokenReplace() {
+      if (!this.requireAdmin()) return;
+      this.cloudToken.replacing = true;
+      this.cloudToken.error = '';
+      this.cloudToken.notice = '';
+      this.cloudToken.password = '';
+      this.githubAuth.token = '';
+      this.githubAuth.error = '';
+      this.$nextTick(() => {
+        refreshIcons();
+        document.getElementById('github-token')?.focus();
+      });
+    },
+
+    cancelCloudTokenReplace() {
+      this.cloudToken.replacing = false;
+      this.cloudToken.password = '';
+      this.cloudToken.error = '';
+      this.githubAuth.token = this.usingCloudToken ? this.githubAuth.token : '';
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /**
+     * Delete the shared token from the repository. The commit removes the
+     * file, so the GitHub Pages site and every other browser stop finding it;
+     * this tab disconnects immediately.
+     */
+    async deleteCloudToken() {
+      if (!this.requireAdmin()) return false;
+      if (this.cloudToken.deleting) return false;
+
+      this.cloudToken.error = '';
+      this.cloudToken.notice = '';
+
+      if (!this.githubAuth.connected || !normaliseToken(this.githubAuth.token)) {
+        this.cloudToken.error = 'Unlock the saved token (or paste a working one) first — deleting the file is itself a commit, so GitHub needs a token to do it.';
+        return false;
+      }
+      if (!confirm(
+        'Delete the shared publishing token from the repository?\n\n' +
+        '• The file is removed from GitHub in one commit.\n' +
+        '• Every device stops publishing through it at the next sign-in.\n' +
+        '• This tab disconnects straight away.\n\n' +
+        'Remember to revoke the token on github.com as well — deleting the file does not revoke it.'
+      )) return false;
+
+      this.cloudToken.deleting = true;
+      try {
+        const publisher = this.buildGithubPublisher();
+        const existing = await publisher.getFile(CLOUD_TOKEN_PATH);
+        if (existing.exists) {
+          await publisher.deleteFile({
+            path: CLOUD_TOKEN_PATH,
+            sha: existing.sha,
+            message: 'Delete the shared publishing token (via School Cloud System)'
+          });
+        }
+
+        this.cloudToken.payload = null;
+        this.cloudToken.exists = false;
+        this.cloudToken.sha = '';
+        this.cloudToken.fingerprint = '';
+        this.cloudToken.savedAt = '';
+        this.cloudToken.savedBy = '';
+        this.cloudToken.replacing = false;
+        this.cloudToken.notice = 'The shared token was deleted from the repository. Revoke it on github.com too.';
+
+        // Disconnect everywhere this tab could still use it.
+        this.disconnectGithub();
+        this.cloudToken.notice = 'The shared token was deleted from the repository. Revoke it on github.com too.';
+
+        alert(`Deleted. ${CLOUD_TOKEN_PATH} has been removed from the repository, so no device can unlock it any more.\n\nThe token itself still exists on GitHub until you revoke it — open Settings → Developer settings → Personal access tokens and revoke it there.`);
+        return true;
+      } catch (error) {
+        console.warn('Deleting the shared token failed.', error);
+        this.cloudToken.error = `The token could not be deleted from GitHub: ${error.message}`;
+        return false;
+      } finally {
+        this.cloudToken.deleting = false;
+        this.$nextTick(() => refreshIcons());
+      }
+    },
+
+    /**
+     * Decrypt the shared token with a teacher password and use it for this
+     * session. Called automatically at teacher sign-in, and from the unlock
+     * form in Settings for administrators.
+     *
+     * @param {string} password  The shared teacher password.
+     * @param {object} options   { silent } — no UI noise during auto-unlock.
+     */
+    async unlockCloudToken(password, options = {}) {
+      const silent = Boolean(options.silent);
+      if (!silent) {
+        this.cloudToken.error = '';
+        this.cloudToken.notice = '';
+      }
+
+      if (!this.cloudToken.checked) await this.loadCloudToken({ silent: true });
+      if (!this.cloudToken.exists || !this.cloudToken.payload) {
+        if (!silent) this.cloudToken.error = 'No shared token is saved in the repository yet.';
+        return false;
+      }
+
+      this.cloudToken.unlocking = true;
+      try {
+        const token = await decryptCloudToken(this.cloudToken.payload, password);
+        this.githubAuth.token = token;
+        this.githubAuth.connected = true;
+        this.githubAuth.source = 'vault';
+        this.githubAuth.error = '';
+        this.cloudToken.unlocked = true;
+        this.cloudToken.unlockPassword = '';
+        this.cloudToken.showUnlockPassword = false;
+        this.rememberGithubToken(token, 'vault');
+
+        const fingerprint = await tokenFingerprint(token);
+        this.cloudToken.fingerprint = fingerprint;
+        try {
+          sessionStorage.setItem(CLOUD_TOKEN_FINGERPRINT_SESSION_KEY, fingerprint);
+        } catch {
+          /* Cosmetic only. */
+        }
+        if (!silent) this.cloudToken.notice = 'Unlocked. Publishing from this device uses the shared token.';
+        return true;
+      } catch (error) {
+        // An auto-unlock attempt that fails is not an error the teacher
+        // caused — the administrator may simply have rotated the password.
+        if (silent) console.warn('The shared token could not be unlocked automatically.', error);
+        else this.cloudToken.error = error.message;
+        return false;
+      } finally {
+        this.cloudToken.unlocking = false;
+        this.$nextTick(() => refreshIcons());
+      }
+    },
+
+    /** Unlock from the Settings form (administrators). */
+    async unlockCloudTokenFromForm() {
+      if (!this.requireAdmin()) return;
+      await this.unlockCloudToken(this.cloudToken.unlockPassword);
+    },
+
+    toggleCloudTokenPassword() {
+      this.cloudToken.showPassword = !this.cloudToken.showPassword;
+      this.$nextTick(() => refreshIcons());
+    },
+
+    toggleCloudTokenUnlockPassword() {
+      this.cloudToken.showUnlockPassword = !this.cloudToken.showUnlockPassword;
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /**
+     * Re-encrypt the saved token under a new teacher password, so rotating
+     * the teacher login does not silently lock every device out of
+     * publishing. Called from saveTeacherCredentials().
+     */
+    async reEncryptCloudToken(newPassword) {
+      if (!this.cloudToken.exists) return false;
+      const token = normaliseToken(this.githubAuth.token);
+      if (!token) return false;
+
+      try {
+        const publisher = this.buildGithubPublisher();
+        const payload = await encryptCloudToken({ token, password: newPassword, savedBy: ADMIN_USERNAME });
+        const existing = await publisher.getFile(CLOUD_TOKEN_PATH);
+        const result = await publisher.putFile({
+          path: CLOUD_TOKEN_PATH,
+          contentBase64: textToBase64(serialiseVault(payload)),
+          sha: existing.exists ? existing.sha : '',
+          message: 'Re-lock the shared publishing token after a teacher password change (via School Cloud System)'
+        });
+
+        const summary = vaultSummary(payload);
+        this.cloudToken.payload = payload;
+        this.cloudToken.sha = result.contentSha || '';
+        this.cloudToken.savedAt = summary.savedAt;
+        this.cloudToken.fingerprint = summary.fingerprint;
+        return true;
+      } catch (error) {
+        console.warn('The shared token could not be re-locked with the new teacher password.', error);
+        return false;
+      }
     },
 
     /** Raw base64 of a submission's stored bytes, or '' when unavailable. */
@@ -896,6 +1368,18 @@ export function schoolCloud() {
         alert('Connect a GitHub token in Settings → GitHub Auto-Publish first.');
         return false;
       }
+      return this.pushSubmissionToRepository(record, options);
+    },
+
+    /**
+     * The publishing pipeline itself, without the administrator guard, so it
+     * can also serve a teacher's own upload when
+     * PUBLISH_TEACHER_UPLOADS_IMMEDIATELY is enabled and the shared cloud
+     * token is unlocked. Callers are responsible for authorisation.
+     */
+    async pushSubmissionToRepository(record, options = {}) {
+      if (!record || record.published) return false;
+      if (!this.githubAuth.connected) return false;
       if (this.publishingSubmissionId) return false;
 
       this.publishingSubmissionId = record.id;
@@ -1260,23 +1744,25 @@ export function schoolCloud() {
       }, {});
     },
 
+    // Both classification fields are fixed dropdowns, so a suggestion is only
+    // offered when the inferred value is one of the school's own options.
+
     suggestedSubject() {
-      return suggestSubject(this.draft);
+      return suggestSubjectOption(this.draft);
     },
 
     suggestedYearsLabel() {
-      const years = suggestYears(this.draft);
-      return years.length ? formatYears(years) : '';
+      return suggestYearLevel(this.draft);
     },
 
     applySuggestedSubject() {
-      const subject = suggestSubject(this.draft);
+      const subject = suggestSubjectOption(this.draft);
       if (subject) this.draft.subject = subject;
     },
 
     applySuggestedYears() {
-      const years = suggestYears(this.draft);
-      if (years.length) this.draft.years = years.join(', ');
+      const level = suggestYearLevel(this.draft);
+      if (level) this.draft.years = level;
     },
 
     titlePlaceholder() {
@@ -1394,10 +1880,31 @@ export function schoolCloud() {
           this.saveApps();
         }
 
+        // 4. Optional: send a teacher's upload straight to the repository.
+        //    Off by default (PUBLISH_TEACHER_UPLOADS_IMMEDIATELY = false), so
+        //    nothing reaches GitHub until an administrator approves it. When
+        //    a school turns it on, the shared cloud token unlocked at
+        //    sign-in is what does the commit.
+        let cloudPublished = false;
+        if (record.status === 'pending' && PUBLISH_TEACHER_UPLOADS_IMMEDIATELY &&
+            this.githubAuth.connected && !this.offline) {
+          cloudPublished = await this.pushSubmissionToRepository(record);
+          if (cloudPublished) {
+            record.status = 'approved';
+            record.reviewedAt = new Date().toISOString();
+            record.reviewedBy = 'shared cloud token';
+            record.reviewNote = 'Published automatically — this school publishes teacher uploads straight to the public repository.';
+            this.saveSubmissions();
+          }
+        }
+
         this.rememberUploadPrefs();
         this.resetDraft();
 
-        if (record.status === 'approved') {
+        if (cloudPublished) {
+          this.currentView = 'library';
+          alert(`Uploaded to the school cloud. “${record.title}” was committed to the public repository and appears on every device once GitHub Pages redeploys (usually 1–2 minutes).`);
+        } else if (record.status === 'approved') {
           this.currentView = 'library';
           alert(`Published. “${record.title}” is now in the library and searchable immediately.`);
         } else {
@@ -1744,6 +2251,10 @@ export function schoolCloud() {
           } catch (error) {
             console.warn('Could not persist the administrator session.', error);
           }
+          // The administrator's password cannot open the vault (it is locked
+          // with the teacher password), so just make sure Settings knows
+          // whether a shared token exists.
+          this.loadCloudToken({ silent: true });
         } else {
           // The effective credentials come from the administrator's override
           // (Settings → Teacher Access) when one is set on this device,
@@ -1760,6 +2271,10 @@ export function schoolCloud() {
           } catch (error) {
             console.warn('Could not persist the teacher session.', error);
           }
+          // The teacher password is the key to the shared publishing token,
+          // and this is the only moment the site ever sees it in the clear —
+          // so unlock the vault now and keep only the decrypted token.
+          this.unlockCloudToken(password, { silent: true });
         }
       } catch (error) {
         this.loginError = error.message;
@@ -1844,10 +2359,11 @@ export function schoolCloud() {
       if (Object.values(this.teacherCredsErrors).some(Boolean)) return;
 
       this.savingTeacherCreds = true;
+      const newPassword = this.teacherCreds.password;
       try {
         const username = this.teacherCreds.username.trim();
         // Same scheme as config.js: salted SHA-256, never plaintext.
-        const digest = await sha256Hex(`${TEACHER_HASH_SALT}::${username}::${this.teacherCreds.password}`);
+        const digest = await sha256Hex(`${TEACHER_HASH_SALT}::${username}::${newPassword}`);
 
         const override = {
           username,
@@ -1865,12 +2381,26 @@ export function schoolCloud() {
         this.savingTeacherCreds = false;
       }
 
+      // The shared publishing token is locked with the teacher password, so a
+      // rotation would strand every device unless the vault is re-locked with
+      // the new one. Do it now, while the token is still in this session.
+      let vaultNote = '';
+      if (this.cloudToken.exists) {
+        if (normaliseToken(this.githubAuth.token)) {
+          vaultNote = (await this.reEncryptCloudToken(newPassword))
+            ? '\n\nThe shared publishing token was re-locked with the new password, so teachers keep publishing without interruption.'
+            : '\n\nWARNING: the shared publishing token could NOT be re-locked with the new password. Open Settings → GitHub Auto-Publish and save the token again, or teachers will not be able to publish.';
+        } else {
+          vaultNote = '\n\nWARNING: a shared publishing token is saved in the repository but is locked with the OLD password. Unlock it with the old password and save it again, or delete and re-save it.';
+        }
+      }
+
       // A teacher session on this device was signed in under the old
       // credentials — sign it out so the new login takes effect.
       try { sessionStorage.removeItem(TEACHER_SESSION_KEY); } catch { /* optional */ }
 
       this.cancelTeacherCreds();
-      alert(`Teacher login updated on this device.\n\nUsername: ${this.effectiveTeacherUsername}\n\nThis applies to this browser only. To give every teacher the new login, copy the config lines below and paste them into assets/js/config.js on GitHub, then commit — the change applies site-wide once the site redeploys.`);
+      alert(`Teacher login updated on this device.\n\nUsername: ${this.effectiveTeacherUsername}\n\nThis applies to this browser only. To give every teacher the new login, copy the config lines below and paste them into assets/js/config.js on GitHub, then commit — the change applies site-wide once the site redeploys.${vaultNote}`);
       this.$nextTick(() => refreshIcons());
     },
 

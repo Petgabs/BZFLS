@@ -82,6 +82,21 @@ export function validateDraft(draft, file, options = {}) {
     errors.title = 'Use a descriptive title, not just a code. For example “Continuous Probability Distributions — Exercise 16G Solutions”.';
   }
 
+  // Classification is a two-field step with fixed vocabularies, so there is
+  // no excuse for an unclassified resource: without a subject and a year
+  // level the library's facets cannot find it.
+  const subject = String(draft?.subject || '').trim();
+  if (!subject) errors.subject = 'Choose the subject this resource belongs to.';
+  else if (!SUBJECT_OPTIONS.includes(subject)) {
+    errors.subject = `Choose a subject from the list: ${SUBJECT_OPTIONS.join(', ')}.`;
+  }
+
+  const years = String(draft?.years || '').trim();
+  if (!years) errors.years = 'Choose the year level this resource is for.';
+  else if (!parseYearsInput(years).length) {
+    errors.years = `Choose a year level from the list: ${YEAR_LEVEL_OPTIONS.join(', ')}.`;
+  }
+
   if (!String(draft?.owner || '').trim()) errors.owner = 'Name the teacher or owner.';
 
   return errors;
@@ -231,13 +246,68 @@ export function suggestYears(draft) {
   return inferYears(text);
 }
 
+/**
+ * The generic subjects the inference engine knows about, mapped onto the
+ * school's own subject codes. Anything without a confident mapping produces
+ * no suggestion at all — a wrongly pre-filled dropdown is worse than an empty
+ * one, because it gets accepted without being read.
+ */
+const INFERRED_SUBJECT_TO_OPTION = {
+  Mathematics: 'Mathematics',
+  English: 'EALD/English',
+  Languages: 'EALD/English',
+  Physics: 'PHY',
+  Business: 'BS',
+  'Art & Design': 'VA'
+};
+
+/** Suggest one of SUBJECT_OPTIONS for the draft, or '' when unsure. */
+export function suggestSubjectOption(draft) {
+  const guess = suggestSubject(draft);
+  if (!guess) return '';
+  const mapped = INFERRED_SUBJECT_TO_OPTION[guess] || '';
+  return SUBJECT_OPTIONS.includes(mapped) ? mapped : '';
+}
+
+/** Suggest one of YEAR_LEVEL_OPTIONS for the draft, or '' when unsure. */
+export function suggestYearLevel(draft) {
+  for (const year of suggestYears(draft)) {
+    const label = `Year ${year}`;
+    if (YEAR_LEVEL_OPTIONS.includes(label)) return label;
+  }
+  return '';
+}
+
 /** Placeholder title hint derived from the file name (never used as-is). */
 export function titleHint(fileName) {
   return titleFromFileName(fileName);
 }
 
+/**
+ * The subjects a teacher can file a resource under.
+ *
+ * This is the school's own vocabulary, not a guess: the upload form offers
+ * exactly these and nothing else, so every resource lands in a facet students
+ * can actually filter by. Add a line here to add a subject site-wide.
+ */
+export const SUBJECT_OPTIONS = [
+  'Mathematics',
+  'EALD/English',
+  'CAL',
+  'BS',
+  'VA',
+  'PHY',
+  'MEX',
+  'Others'
+];
+
+/** The year levels a resource can be filed under. */
+export const YEAR_LEVEL_OPTIONS = ['Year 9', 'Year 10', 'Year 11', 'Year 12'];
+
 /** Options shown in the upload form. Kept here so tests can lock the vocabulary. */
 export const FORM_OPTIONS = {
+  subjects: SUBJECT_OPTIONS,
+  yearLevels: YEAR_LEVEL_OPTIONS,
   resourceTypes: [
     'Worksheet',
     'Lesson plan',

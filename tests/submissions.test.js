@@ -16,9 +16,13 @@ import {
   submissionCounts,
   suggestSubject,
   suggestYears,
+  suggestSubjectOption,
+  suggestYearLevel,
   titleHint,
   academicYearOptions,
-  FORM_OPTIONS
+  FORM_OPTIONS,
+  SUBJECT_OPTIONS,
+  YEAR_LEVEL_OPTIONS
 } from '../assets/js/lib/submissions.js';
 import { buildMetadata, normaliseVisibility, visibilityLabel, isReviewDue } from '../assets/js/lib/metadata.js';
 import { searchableText, queryLibrary } from '../assets/js/lib/search.js';
@@ -124,6 +128,28 @@ describe('validateDraft', () => {
     const big = { ...FILE, size: 55 * 1024 * 1024 };
     const errors = validateDraft(filledDraft(), big, { maxBytes: 50 * 1024 * 1024 });
     expect(errors.file).toMatch(/50 MB/);
+  });
+
+  it('requires the resource to be classified', () => {
+    const errors = validateDraft(emptyDraft(), null, {});
+    expect(errors.subject).toBeTruthy();
+    expect(errors.years).toBeTruthy();
+  });
+
+  it('only accepts subjects from the school vocabulary', () => {
+    expect(validateDraft(filledDraft({ subject: 'Underwater Basket Weaving' }), FILE, {}).subject)
+      .toMatch(/Choose a subject from the list/i);
+    for (const subject of SUBJECT_OPTIONS) {
+      expect(validateDraft(filledDraft({ subject }), FILE, {}).subject).toBeUndefined();
+    }
+  });
+
+  it('accepts every offered year level', () => {
+    for (const level of YEAR_LEVEL_OPTIONS) {
+      expect(validateDraft(filledDraft({ years: level }), FILE, {}).years).toBeUndefined();
+    }
+    expect(validateDraft(filledDraft({ years: 'whenever' }), FILE, {}).years)
+      .toMatch(/Choose a year level from the list/i);
   });
 });
 
@@ -275,6 +301,49 @@ describe('titleHint', () => {
   it('turns a bare file name into the seed of a real title', () => {
     expect(titleHint('16G.pdf')).toBe('16G');
     expect(titleHint('2024-year-10-algebra.pdf')).toBe('year 10 algebra');
+  });
+});
+
+describe('classification vocabulary', () => {
+  it('offers exactly the school\'s subjects, in order', () => {
+    expect(FORM_OPTIONS.subjects).toEqual([
+      'Mathematics', 'EALD/English', 'CAL', 'BS', 'VA', 'PHY', 'MEX', 'Others'
+    ]);
+    expect(FORM_OPTIONS.subjects).toBe(SUBJECT_OPTIONS);
+  });
+
+  it('offers Year 9 to Year 12 as year levels', () => {
+    expect(FORM_OPTIONS.yearLevels).toEqual(['Year 9', 'Year 10', 'Year 11', 'Year 12']);
+    expect(FORM_OPTIONS.yearLevels).toBe(YEAR_LEVEL_OPTIONS);
+  });
+
+  it('turns every year-level option into a real year number', () => {
+    expect(YEAR_LEVEL_OPTIONS.map(level => parseYearsInput(level))).toEqual([[9], [10], [11], [12]]);
+  });
+
+  it('suggests only values the dropdowns actually contain', () => {
+    const maths = { title: 'Algebra revision for Year 10', description: '', topic: '' };
+    expect(suggestSubjectOption(maths)).toBe('Mathematics');
+    expect(SUBJECT_OPTIONS).toContain(suggestSubjectOption(maths));
+    expect(suggestYearLevel(maths)).toBe('Year 10');
+
+    // "English" is EALD/English here, not the generic inferred label.
+    expect(suggestSubjectOption({ title: 'Poetry comprehension essay' })).toBe('EALD/English');
+    expect(suggestSubjectOption({ title: 'Optics and kinematics practical' })).toBe('PHY');
+  });
+
+  it('stays silent rather than guessing something that is not on the list', () => {
+    // Chemistry has no code in this school's vocabulary, and Year 7 is not
+    // offered — a wrong pre-filled dropdown is worse than an empty one.
+    expect(suggestSubjectOption({ title: 'Titration practical write-up' })).toBe('');
+    expect(suggestYearLevel({ title: 'Year 7 transition booklet' })).toBe('');
+    expect(suggestSubjectOption({ title: '' })).toBe('');
+    expect(suggestYearLevel({ title: '' })).toBe('');
+  });
+
+  it('never suggests over a choice the teacher already made', () => {
+    expect(suggestSubjectOption({ title: 'Algebra', subject: 'Others' })).toBe('');
+    expect(suggestYearLevel({ title: 'Year 10 algebra', years: 'Year 12' })).toBe('');
   });
 });
 
