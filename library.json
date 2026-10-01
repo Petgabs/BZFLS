@@ -27,32 +27,6 @@
     ],
     "description": "Weekly class timetable for Year 10 and Year 11, including room allocations and period times."
   },
-  "apps/16G.pdf": {
-    "title": "Continuous Probability Distributions — Exercise 16G Solutions",
-    "description": "Worked solutions for Exercise 16G on continuous probability distributions, including CDF and PDF questions with full working. Use alongside the textbook exercise for self-checking.",
-    "subject": "Mathematics",
-    "years": [
-      12
-    ],
-    "topic": "Continuous probability distributions (random variables, CDF/PDF)",
-    "resourceType": "Exercise solutions",
-    "language": "English",
-    "owner": "Mathematics Department",
-    "department": "Mathematics",
-    "academicYear": "2026",
-    "keywords": [
-      "probability",
-      "continuous distributions",
-      "solutions",
-      "hsc",
-      "revision"
-    ],
-    "visibility": "school",
-    "version": "1.1",
-    "reviewDate": "2027-01-31",
-    "licence": "School use only — check with the owner",
-    "accessibility": "Tagged PDF; worked steps are also readable as plain text."
-  },
   "apps/Paper2_Solutions_Booklet (1).pdf": {
     "title": "Finance Practice",
     "description": "",
