@@ -1468,11 +1468,25 @@
     <script>
         // Register the service worker for offline support. Kept inline and
         // tiny so it works even if the module bundle fails to load.
+        //
+        // Update flow: the worker script itself is always fetched from the
+        // network (updateViaCache: 'none'), so a new VERSION deploys promptly.
+        // When the new worker takes over, the page reloads once — visitors
+        // see the new version on their next refresh instead of a mix of old
+        // cached assets.
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js').catch(error => {
-                    console.warn('Offline support is unavailable.', error);
+                let refreshed = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (refreshed) return;
+                    refreshed = true;
+                    window.location.reload();
                 });
+                navigator.serviceWorker
+                    .register('./sw.js', { updateViaCache: 'none' })
+                    .catch(error => {
+                        console.warn('Offline support is unavailable.', error);
+                    });
             });
         }
     </script>

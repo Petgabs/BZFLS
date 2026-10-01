@@ -106,10 +106,16 @@ npm install          # install build + test tooling
 npm run build        # vendor dependencies and compile CSS
 npm test             # unit, integration and accessibility tests
 npm run lint:js      # node --check on every first-party script
-npx serve .          # or any static server
+npm run dev          # serve the site on http://localhost:8080 (no caching)
 ```
 
 `npm run watch:css` rebuilds the stylesheet while you edit.
+
+Prefer `npm run dev` over `npx serve .` while working: the dev server sends
+`Cache-Control: no-store` on every response, so a refresh always shows your
+current files. Generic static servers omit cache headers, and browsers then
+heuristic-cache the scripts — which looks exactly like "my changes did not
+deploy".
 
 ### Committed build output
 
