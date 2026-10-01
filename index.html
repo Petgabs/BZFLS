@@ -36,7 +36,7 @@
                 <div class="bg-indigo-600 p-2 rounded-lg text-white">
                     <i data-lucide="file-code" aria-hidden="true"></i>
                 </div>
-                <h1 class="text-xl font-bold tracking-tight">BZFLS-SchoolCloud <span class="text-xs font-normal text-slate-400 ml-1">v1.2</span></h1>
+                <h1 class="text-xl font-bold tracking-tight">BZFLS-SchoolCloud <span class="text-xs font-normal text-slate-400 ml-1">v1.3</span></h1>
             </button>
 
             <div class="flex items-center gap-3 sm:gap-4">
@@ -52,21 +52,39 @@
                     <i data-lucide="layout-dashboard" class="w-4 h-4" aria-hidden="true"></i>
                     Dashboard
                 </button>
-                <button type="button" @click="currentView = 'upload'" x-show="isAdmin && currentView === 'library'"
+                <button type="button" @click="openUpload()" x-show="isStaff && currentView !== 'upload'"
                         class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors shadow-sm focus-ring">
-                    <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>
-                    Admin Upload
+                    <i data-lucide="upload" class="w-4 h-4" aria-hidden="true"></i>
+                    Upload Resource
+                </button>
+                <button type="button" @click="openSubmissions()" x-show="isStaff"
+                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
+                    <i data-lucide="inbox" class="w-4 h-4" aria-hidden="true"></i>
+                    <span x-text="isAdmin ? 'Review Submissions' : 'My Submissions'"></span>
+                    <span x-show="submissionCounts.pending" class="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                          x-text="submissionCounts.pending"></span>
                 </button>
                 <button type="button" @click="currentView = 'settings'" x-show="isAdmin" aria-label="Settings"
                         class="p-2 text-slate-400 hover:text-slate-600 transition-colors focus-ring rounded-md">
                     <i data-lucide="settings" class="w-5 h-5" aria-hidden="true"></i>
                 </button>
-                <button type="button" x-show="!isAdmin" @click="openLogin()"
-                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
-                    <i data-lucide="lock" class="w-4 h-4" aria-hidden="true"></i>
-                    Admin Sign In
+                <!-- Teacher sign-in: separate shared staff account for uploading resources -->
+                <button type="button" x-show="!isStaff" @click="openLogin('teacher')"
+                        class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-emerald-700 transition-colors shadow-sm focus-ring">
+                    <i data-lucide="graduation-cap" class="w-4 h-4" aria-hidden="true"></i>
+                    Teacher Login
                 </button>
-                <button type="button" x-show="isAdmin" @click="logout()"
+                <button type="button" x-show="!isStaff" @click="openLogin('admin')"
+                        class="inline-flex items-center gap-2 border border-slate-200 text-slate-400 px-3 py-2 rounded-md text-xs font-medium hover:text-slate-700 hover:border-slate-300 transition-colors focus-ring">
+                    <i data-lucide="shield" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                    Admin
+                </button>
+                <span x-show="isStaff" class="hidden sm:inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full text-xs font-medium"
+                      :title="isAdmin ? 'Signed in as administrator' : 'Signed in with the shared teacher account'">
+                    <i :data-lucide="isAdmin ? 'shield-check' : 'graduation-cap'" class="w-3.5 h-3.5" :class="isAdmin ? 'text-indigo-600' : 'text-emerald-600'" aria-hidden="true"></i>
+                    <span x-text="isAdmin ? 'Administrator' : 'Teacher'"></span>
+                </span>
+                <button type="button" x-show="isStaff" @click="logout()"
                         class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
                     <i data-lucide="log-out" class="w-4 h-4" aria-hidden="true"></i>
                     Sign Out
@@ -86,22 +104,22 @@
                 <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
                     <i data-lucide="upload-cloud" class="w-5 h-5 text-indigo-100" aria-hidden="true"></i>
                 </div>
-                <h3 class="text-lg font-bold text-white">1. Share Apps</h3>
-                <p class="text-indigo-100 text-sm leading-relaxed">Teachers save mini HTML apps locally or share them through the public GitHub repository.</p>
+                <h3 class="text-lg font-bold text-white">1. Teachers Upload</h3>
+                <p class="text-indigo-100 text-sm leading-relaxed">Staff sign in with the teacher account, upload a file and describe it — title, subject, year group and more.</p>
+            </div>
+            <div class="flex flex-col gap-3">
+                <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="shield-check" class="w-5 h-5 text-indigo-100" aria-hidden="true"></i>
+                </div>
+                <h3 class="text-lg font-bold text-white">2. Reviewed &amp; Approved</h3>
+                <p class="text-indigo-100 text-sm leading-relaxed">New submissions wait in a review queue. Once an administrator approves them they appear in the library instantly.</p>
             </div>
             <div class="flex flex-col gap-3">
                 <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
                     <i data-lucide="search" class="w-5 h-5 text-indigo-100" aria-hidden="true"></i>
                 </div>
-                <h3 class="text-lg font-bold text-white">2. Find by Subject</h3>
-                <p class="text-indigo-100 text-sm leading-relaxed">Search the library or filter by subject and year group, then preview before downloading.</p>
-            </div>
-            <div class="flex flex-col gap-3">
-                <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="download" class="w-5 h-5 text-indigo-100" aria-hidden="true"></i>
-                </div>
-                <h3 class="text-lg font-bold text-white">3. Offline Use</h3>
-                <p class="text-indigo-100 text-sm leading-relaxed">Students download apps to their device and use them anywhere.</p>
+                <h3 class="text-lg font-bold text-white">3. Search &amp; Use</h3>
+                <p class="text-indigo-100 text-sm leading-relaxed">Students search by subject, topic or year group, preview resources in the browser and download them for offline use.</p>
             </div>
         </section>
 
@@ -313,10 +331,11 @@
                     <template x-for="app in filteredMiniApps" :key="app.id">
                         <li class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col">
                             <div class="p-6 flex flex-col flex-1">
-                                <div class="flex justify-between items-start gap-3 mb-3">
+                                <div class="flex justify-between items-start gap-3 mb-1">
                                     <h4 class="text-lg font-bold text-slate-900 break-words" x-text="app.name"></h4>
                                     <span class="text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2 py-1 rounded flex-shrink-0">HTML5</span>
                                 </div>
+                                <p class="text-xs text-slate-400 mb-3 break-all" x-text="app.fileName"></p>
 
                                 <!-- Structured metadata -->
                                 <div class="flex flex-wrap items-center gap-1.5 mb-3">
@@ -325,6 +344,19 @@
                                     <span x-show="app.meta.years.length"
                                           class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 ring-1 ring-slate-200"
                                           x-text="formatYears(app.meta.years)"></span>
+                                    <span x-show="app.meta.visibility !== 'public'"
+                                          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ring-1"
+                                          :class="visibilityAccent(app.meta.visibility)"
+                                          :title="'Intended audience: ' + visibilityLabel(app.meta.visibility)">
+                                        <i data-lucide="eye-off" class="w-3 h-3" aria-hidden="true"></i>
+                                        <span x-text="visibilityLabel(app.meta.visibility)"></span>
+                                    </span>
+                                    <span x-show="isReviewDue(app.meta.reviewDate)"
+                                          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+                                          :title="'Review or expiry date passed: ' + formatDate(app.meta.reviewDate)">
+                                        <i data-lucide="calendar-clock" class="w-3 h-3" aria-hidden="true"></i>
+                                        Review due
+                                    </span>
                                     <template x-for="tag in app.meta.tags.slice(0, 2)" :key="tag">
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-slate-50 text-slate-500 ring-1 ring-slate-200" x-text="'#' + tag"></span>
                                     </template>
@@ -389,22 +421,38 @@
                     <template x-for="resource in filteredResources" :key="resource.id">
                         <li class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col">
                             <div class="p-6 flex flex-col flex-1">
-                                <div class="flex items-start justify-between gap-4 mb-3">
+                                <div class="flex items-start justify-between gap-4 mb-1">
                                     <div class="flex items-center gap-3 min-w-0">
                                         <div class="bg-amber-50 text-amber-700 p-2.5 rounded-lg flex-shrink-0">
                                             <i :data-lucide="fileIcon(resource)" class="w-5 h-5" aria-hidden="true"></i>
                                         </div>
-                                        <h4 class="font-bold text-slate-900 break-words" x-text="resource.name"></h4>
+                                        <div class="min-w-0">
+                                            <h4 class="font-bold text-slate-900 break-words" x-text="resource.name"></h4>
+                                            <p class="text-xs text-slate-400 break-all mt-0.5" x-text="resource.fileName"></p>
+                                        </div>
                                     </div>
                                     <span class="text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 px-2 py-1 rounded flex-shrink-0" x-text="fileExtension(resource)"></span>
                                 </div>
 
-                                <div class="flex flex-wrap items-center gap-1.5 mb-3">
+                                <div class="flex flex-wrap items-center gap-1.5 mb-3 mt-3">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1"
                                           :class="subjectAccent(resource.meta.subject)" x-text="resource.meta.subject"></span>
                                     <span x-show="resource.meta.years.length"
                                           class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 ring-1 ring-slate-200"
                                           x-text="formatYears(resource.meta.years)"></span>
+                                    <span x-show="resource.meta.visibility !== 'public'"
+                                          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ring-1"
+                                          :class="visibilityAccent(resource.meta.visibility)"
+                                          :title="'Intended audience: ' + visibilityLabel(resource.meta.visibility)">
+                                        <i data-lucide="eye-off" class="w-3 h-3" aria-hidden="true"></i>
+                                        <span x-text="visibilityLabel(resource.meta.visibility)"></span>
+                                    </span>
+                                    <span x-show="isReviewDue(resource.meta.reviewDate)"
+                                          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+                                          :title="'Review or expiry date passed: ' + formatDate(resource.meta.reviewDate)">
+                                        <i data-lucide="calendar-clock" class="w-3 h-3" aria-hidden="true"></i>
+                                        Review due
+                                    </span>
                                     <template x-for="tag in resource.meta.tags.slice(0, 2)" :key="tag">
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-slate-50 text-slate-500 ring-1 ring-slate-200" x-text="'#' + tag"></span>
                                     </template>
@@ -500,11 +548,13 @@
                 </div>
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                     <div class="flex items-center justify-between mb-3">
-                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Browser-Only Apps</span>
-                        <i data-lucide="hard-drive" class="w-4 h-4 text-slate-500" aria-hidden="true"></i>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Awaiting Review</span>
+                        <i data-lucide="inbox" class="w-4 h-4 text-amber-500" aria-hidden="true"></i>
                     </div>
-                    <p class="text-3xl font-bold text-slate-900" x-text="localAppCount"></p>
-                    <p class="text-xs text-slate-500 mt-1">Drafts saved on this device</p>
+                    <p class="text-3xl font-bold text-slate-900" x-text="submissionCounts.pending"></p>
+                    <button type="button" @click="openSubmissions()" class="text-xs text-indigo-600 font-medium hover:text-indigo-800 mt-1 focus-ring rounded px-1 py-0.5">
+                        Review submissions →
+                    </button>
                 </div>
             </div>
 
@@ -606,104 +656,513 @@
             </div>
         </div>
 
-        <!-- Upload View -->
-        <div x-show="isAdmin && currentView === 'upload'" x-transition x-cloak class="max-w-2xl mx-auto">
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-                <div class="flex items-center justify-between mb-8">
-                    <button type="button" @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors focus-ring rounded-md">
-                        <i data-lucide="arrow-left" class="w-4 h-4" aria-hidden="true"></i>
-                        Back to Library
-                    </button>
-                    <h2 class="text-2xl font-bold">Add Mini App <span class="text-xs font-normal text-slate-400">Admin</span></h2>
-                </div>
+        <!-- Upload View (teachers + admin) -->
+        <div x-show="isStaff && currentView === 'upload'" x-transition x-cloak>
+            <div class="max-w-3xl mx-auto mb-6">
+                <button type="button" @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors mb-3 focus-ring rounded-md">
+                    <i data-lucide="arrow-left" class="w-4 h-4" aria-hidden="true"></i>
+                    Back to Library
+                </button>
+                <h2 class="text-3xl font-bold text-slate-900">Upload a Resource</h2>
+                <p class="text-slate-600 mt-2">
+                    Choose a file, describe it with structured details, check the automatic preview, then submit it for publication.
+                    <span x-show="!isAdmin" class="block mt-1 text-sm text-slate-500">An administrator reviews new submissions before they appear in the public library.</span>
+                    <span x-show="isAdmin" class="block mt-1 text-sm text-slate-500">As the administrator, your uploads are published to the library immediately.</span>
+                </p>
+            </div>
 
-                <div class="bg-blue-50 border border-blue-100 p-4 rounded-lg mb-6 flex gap-3">
-                    <i data-lucide="info" class="w-5 h-5 text-blue-500 flex-shrink-0" aria-hidden="true"></i>
-                    <p class="text-sm text-blue-700">Saving here keeps the app in this browser. To share it with everyone, use the GitHub upload link below and upload the same HTML file.</p>
-                </div>
-
-                <form x-ref="uploadForm" @submit.prevent="handleUpload" class="space-y-6">
-                    <div>
-                        <label for="app-name" class="block text-sm font-medium text-slate-700 mb-1">App Name</label>
-                        <input id="app-name" type="text" x-model="newApp.name" required placeholder="e.g., Periodic Table Explorer"
-                               class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
-                    </div>
-
-                    <div>
-                        <label for="app-teacher" class="block text-sm font-medium text-slate-700 mb-1">Teacher Name</label>
-                        <input id="app-teacher" type="text" x-model="newApp.teacherName" required placeholder="Your name"
-                               class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
-                    </div>
-
-                    <div>
-                        <label for="app-description" class="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                        <textarea id="app-description" x-model="newApp.description" rows="3" placeholder="Explain what this tool does..."
-                                  class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"></textarea>
-                    </div>
-
-                    <!-- Structured metadata -->
-                    <fieldset class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <legend class="text-sm font-medium text-slate-700 mb-2">Metadata <span class="text-slate-400 font-normal">(optional — guessed from the file name when blank)</span></legend>
-                        <div>
-                            <label for="app-subject" class="block text-xs font-medium text-slate-500 mb-1">Subject</label>
-                            <input id="app-subject" type="text" x-model="newApp.subject" placeholder="Mathematics" list="subject-suggestions"
-                                   class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                            <datalist id="subject-suggestions">
-                                <template x-for="subject in subjectOptions" :key="subject">
-                                    <option :value="subject"></option>
-                                </template>
-                            </datalist>
-                        </div>
-                        <div>
-                            <label for="app-years" class="block text-xs font-medium text-slate-500 mb-1">Year groups</label>
-                            <input id="app-years" type="text" x-model="newApp.years" placeholder="10, 11"
-                                   class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                        </div>
-                        <div>
-                            <label for="app-tags" class="block text-xs font-medium text-slate-500 mb-1">Tags</label>
-                            <input id="app-tags" type="text" x-model="newApp.tags" placeholder="revision, quiz"
-                                   class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                        </div>
-                    </fieldset>
-
-                    <div>
-                        <label for="app-file" class="block text-sm font-medium text-slate-700 mb-1">HTML File</label>
-                        <div class="mt-1 relative border-2 border-slate-200 border-dashed rounded-xl p-8 text-center hover:border-indigo-400 transition-colors">
-                            <input id="app-file" type="file" @change="handleFileChange" accept=".html" required
+            <div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
+                <!-- Form column -->
+                <form x-ref="uploadForm" @submit.prevent="submitResource" class="lg:col-span-3 space-y-6" novalidate>
+                    <!-- Step 1: the file -->
+                    <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6" aria-labelledby="upload-file-heading">
+                        <h3 id="upload-file-heading" class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+                            <span class="bg-indigo-600 text-white w-5 h-5 rounded-full text-[11px] flex items-center justify-center font-bold" aria-hidden="true">1</span>
+                            Choose the file
+                        </h3>
+                        <label for="resource-file" class="sr-only">Resource file</label>
+                        <div class="relative border-2 border-slate-200 border-dashed rounded-xl p-8 text-center hover:border-indigo-400 transition-colors"
+                             :class="draftErrors.file ? 'border-red-300' : ''"
+                             @dragover.prevent="$event.dataTransfer.dropEffect = 'copy'"
+                             @drop.prevent="handleFileDrop($event)">
+                            <input id="resource-file" type="file" @change="handleFileChange"
+                                   accept=".html,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
                                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
-                            <div class="space-y-2">
+                            <div class="space-y-2 pointer-events-none">
                                 <i data-lucide="file-up" class="mx-auto h-12 w-12 text-slate-300" aria-hidden="true"></i>
                                 <div class="text-sm text-slate-600">
                                     <span class="font-semibold text-indigo-600">Click to upload</span> or drag and drop
                                 </div>
-                                <p class="text-xs text-slate-400" x-text="fileName ? 'Selected: ' + fileName : 'Supports .html files only'"></p>
+                                <p class="text-xs text-slate-400" x-text="draftFile ? 'Selected: ' + draftFile.name : 'PDF, Word, Excel, PowerPoint or HTML — up to 8 MB'"></p>
+                                <p class="text-xs font-medium text-slate-500" x-show="draftFile" x-text="draftFile ? formatBytes(draftFile.size) + ' · ' + kindLabel({fileName: draftFile.name}) : ''"></p>
                             </div>
                         </div>
-                    </div>
+                        <p x-show="draftErrors.file" x-text="draftErrors.file" class="text-sm text-red-600 mt-2" role="alert"></p>
+                    </section>
 
-                    <button type="submit" :disabled="uploading || !fileReady"
+                    <!-- Step 2: core details -->
+                    <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6" aria-labelledby="upload-details-heading">
+                        <h3 id="upload-details-heading" class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+                            <span class="bg-indigo-600 text-white w-5 h-5 rounded-full text-[11px] flex items-center justify-center font-bold" aria-hidden="true">2</span>
+                            Describe the resource
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="resource-title" class="block text-sm font-medium text-slate-700 mb-1">
+                                    Title <span class="text-red-500" aria-hidden="true">*</span>
+                                </label>
+                                <input id="resource-title" type="text" x-model="draft.title" :placeholder="titlePlaceholder()"
+                                       aria-describedby="resource-title-hint"
+                                       class="w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                       :class="draftErrors.title ? 'border-red-300' : 'border-slate-200'">
+                                <p id="resource-title-hint" class="text-xs text-slate-400 mt-1">
+                                    Write the title a student would search for — not the file name. “16G.pdf” says far less than
+                                    “Continuous Probability Distributions — Exercise 16G Solutions”.
+                                </p>
+                                <p x-show="draftErrors.title" x-text="draftErrors.title" class="text-sm text-red-600 mt-1" role="alert"></p>
+                            </div>
+                            <div>
+                                <label for="resource-description" class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                <textarea id="resource-description" x-model="draft.description" rows="3"
+                                          placeholder="What is inside, who is it for, and how should it be used?"
+                                          class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"></textarea>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Step 3: classification -->
+                    <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6" aria-labelledby="upload-classify-heading">
+                        <h3 id="upload-classify-heading" class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+                            <span class="bg-indigo-600 text-white w-5 h-5 rounded-full text-[11px] flex items-center justify-center font-bold" aria-hidden="true">3</span>
+                            Classify it
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label for="resource-subject" class="block text-xs font-medium text-slate-500 mb-1">Subject</label>
+                                <div class="flex gap-2">
+                                    <input id="resource-subject" type="text" x-model="draft.subject" placeholder="e.g. Mathematics" list="subject-suggestions"
+                                           class="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <button type="button" x-show="suggestedSubject()" @click="applySuggestedSubject()"
+                                            :aria-label="'Use suggested subject ' + suggestedSubject()"
+                                            class="flex-shrink-0 text-[11px] font-medium text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors focus-ring">
+                                        <span x-text="suggestedSubject()"></span>
+                                    </button>
+                                </div>
+                                <datalist id="subject-suggestions">
+                                    <template x-for="subject in subjectOptions" :key="subject">
+                                        <option :value="subject"></option>
+                                    </template>
+                                </datalist>
+                            </div>
+                            <div>
+                                <label for="resource-years" class="block text-xs font-medium text-slate-500 mb-1">Grade / year level</label>
+                                <div class="flex gap-2">
+                                    <input id="resource-years" type="text" x-model="draft.years" placeholder="e.g. 12 or 10, 11" inputmode="numeric"
+                                           class="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <button type="button" x-show="suggestedYearsLabel()" @click="applySuggestedYears()"
+                                            :aria-label="'Use suggested years ' + suggestedYearsLabel()"
+                                            class="flex-shrink-0 text-[11px] font-medium text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors focus-ring">
+                                        <span x-text="suggestedYearsLabel()"></span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label for="resource-topic" class="block text-xs font-medium text-slate-500 mb-1">Topic or curriculum outcome</label>
+                                <input id="resource-topic" type="text" x-model="draft.topic" placeholder="e.g. Continuous probability distributions (HSC M5.3)"
+                                       class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                            </div>
+                            <div>
+                                <label for="resource-type" class="block text-xs font-medium text-slate-500 mb-1">Resource type</label>
+                                <select id="resource-type" x-model="draft.resourceType"
+                                        class="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <option value="">Choose…</option>
+                                    <template x-for="type in formOptions.resourceTypes" :key="type">
+                                        <option :value="type" x-text="type"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="resource-language" class="block text-xs font-medium text-slate-500 mb-1">Language</label>
+                                <select id="resource-language" x-model="draft.language"
+                                        class="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <template x-for="language in formOptions.languages" :key="language">
+                                        <option :value="language" x-text="language"></option>
+                                    </template>
+                                </select>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Step 4: ownership & keywords -->
+                    <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6" aria-labelledby="upload-owner-heading">
+                        <h3 id="upload-owner-heading" class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+                            <span class="bg-indigo-600 text-white w-5 h-5 rounded-full text-[11px] flex items-center justify-center font-bold" aria-hidden="true">4</span>
+                            Ownership &amp; keywords
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label for="resource-owner" class="block text-xs font-medium text-slate-500 mb-1">
+                                    Teacher / owner <span class="text-red-500" aria-hidden="true">*</span>
+                                </label>
+                                <input id="resource-owner" type="text" x-model="draft.owner" placeholder="e.g. Mr A. Rahman"
+                                       class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                       :class="draftErrors.owner ? 'border-red-300' : 'border-slate-200'">
+                                <p x-show="draftErrors.owner" x-text="draftErrors.owner" class="text-sm text-red-600 mt-1" role="alert"></p>
+                            </div>
+                            <div>
+                                <label for="resource-department" class="block text-xs font-medium text-slate-500 mb-1">Department</label>
+                                <input id="resource-department" type="text" x-model="draft.department" placeholder="e.g. Mathematics" list="department-suggestions"
+                                       class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <datalist id="department-suggestions">
+                                    <template x-for="department in formOptions.departments" :key="department">
+                                        <option :value="department"></option>
+                                    </template>
+                                </datalist>
+                            </div>
+                            <div>
+                                <label for="resource-academic-year" class="block text-xs font-medium text-slate-500 mb-1">Academic year</label>
+                                <input id="resource-academic-year" type="text" x-model="draft.academicYear" placeholder="e.g. 2026/27" list="academic-year-suggestions"
+                                       class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <datalist id="academic-year-suggestions">
+                                    <template x-for="year in academicYears" :key="year">
+                                        <option :value="year"></option>
+                                    </template>
+                                </datalist>
+                            </div>
+                            <div>
+                                <label for="resource-keywords" class="block text-xs font-medium text-slate-500 mb-1">Keywords</label>
+                                <input id="resource-keywords" type="text" x-model="draft.keywords" placeholder="comma separated, e.g. probability, revision, HSC"
+                                       class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Step 5: publication details -->
+                    <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6" aria-labelledby="upload-publish-heading">
+                        <h3 id="upload-publish-heading" class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+                            <span class="bg-indigo-600 text-white w-5 h-5 rounded-full text-[11px] flex items-center justify-center font-bold" aria-hidden="true">5</span>
+                            Publication details
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label for="resource-visibility" class="block text-xs font-medium text-slate-500 mb-1">Visibility</label>
+                                <select id="resource-visibility" x-model="draft.visibility"
+                                        class="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <template x-for="option in formOptions.visibilities" :key="option.value">
+                                        <option :value="option.value" x-text="option.label"></option>
+                                    </template>
+                                </select>
+                                <p class="text-xs text-slate-400 mt-1" aria-live="polite"
+                                   x-text="(formOptions.visibilities.find(option => option.value === draft.visibility) || {}).hint"></p>
+                            </div>
+                            <div>
+                                <label for="resource-version" class="block text-xs font-medium text-slate-500 mb-1">Version</label>
+                                <input id="resource-version" type="text" x-model="draft.version" placeholder="1.0"
+                                       class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                            </div>
+                            <div>
+                                <label for="resource-review-date" class="block text-xs font-medium text-slate-500 mb-1">Review / expiry date <span class="font-normal text-slate-300">(optional)</span></label>
+                                <input id="resource-review-date" type="date" x-model="draft.reviewDate"
+                                       class="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <p class="text-xs text-slate-400 mt-1">The library flags the resource once this date passes.</p>
+                            </div>
+                            <div>
+                                <label for="resource-licence" class="block text-xs font-medium text-slate-500 mb-1">Copyright / licence</label>
+                                <select id="resource-licence" x-model="draft.licence"
+                                        class="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <option value="">Choose…</option>
+                                    <template x-for="licence in formOptions.licences" :key="licence">
+                                        <option :value="licence" x-text="licence"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label for="resource-accessibility" class="block text-xs font-medium text-slate-500 mb-1">Accessibility notes <span class="font-normal text-slate-300">(optional)</span></label>
+                                <textarea id="resource-accessibility" x-model="draft.accessibility" rows="2"
+                                          placeholder="e.g. Tagged PDF with readable text; large-print version available on request."
+                                          class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"></textarea>
+                            </div>
+                        </div>
+                    </section>
+
+                    <button type="submit" :disabled="submitting"
                             class="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3.5 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-lg shadow-indigo-100 focus-ring">
-                        <span x-show="!uploading" class="flex items-center gap-2">
-                            <i data-lucide="save" class="w-5 h-5" aria-hidden="true"></i> Save to This Browser
+                        <span x-show="!submitting && !isAdmin" class="flex items-center gap-2">
+                            <i data-lucide="send" class="w-5 h-5" aria-hidden="true"></i> Submit for Publication
                         </span>
-                        <span x-show="uploading" class="flex items-center gap-2">
+                        <span x-show="!submitting && isAdmin" class="flex items-center gap-2">
+                            <i data-lucide="check-circle-2" class="w-5 h-5" aria-hidden="true"></i> Publish Immediately
+                        </span>
+                        <span x-show="submitting" class="flex items-center gap-2">
                             <svg class="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                            Saving...
+                            Submitting…
                         </span>
                     </button>
+                </form>
 
-                    <div class="relative py-1">
-                        <div class="absolute inset-0 flex items-center" aria-hidden="true"><div class="w-full border-t border-slate-200"></div></div>
-                        <div class="relative flex justify-center"><span class="bg-white px-3 text-xs uppercase tracking-wide text-slate-400">Share publicly</span></div>
+                <!-- Automatic preview column -->
+                <aside class="lg:col-span-2 lg:sticky lg:top-24 space-y-4" aria-labelledby="upload-preview-heading">
+                    <h3 id="upload-preview-heading" class="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                        <i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i>
+                        Automatic preview
+                    </h3>
+
+                    <!-- Live card preview: exactly how the resource will appear -->
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="bg-amber-50 text-amber-700 p-2 rounded-lg">
+                                <i :data-lucide="fileIcon({fileName: draftFile ? draftFile.name : 'x.pdf'})" class="w-4 h-4" aria-hidden="true"></i>
+                            </div>
+                            <h4 class="font-bold text-slate-900 break-words" x-text="draft.title || 'Your title appears here'"></h4>
+                        </div>
+                        <p class="text-xs text-slate-400 break-all" x-text="draftFile ? draftFile.name : 'no file chosen yet'"></p>
+                        <div class="flex flex-wrap items-center gap-1.5 my-3">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1"
+                                  :class="subjectAccent(draftCardMeta.subject)" x-text="draftCardMeta.subject"></span>
+                            <span x-show="draftCardMeta.years.length"
+                                  class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 ring-1 ring-slate-200"
+                                  x-text="formatYears(draftCardMeta.years)"></span>
+                            <span x-show="draftCardMeta.visibility !== 'public'"
+                                  class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1"
+                                  :class="visibilityAccent(draftCardMeta.visibility)" x-text="visibilityLabel(draftCardMeta.visibility)"></span>
+                            <span x-show="draft.resourceType"
+                                  class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-50 text-slate-500 ring-1 ring-slate-200" x-text="draft.resourceType"></span>
+                        </div>
+                        <p class="text-sm text-slate-600 line-clamp-3" x-text="draft.description || 'The description you type will appear here.'"></p>
+                        <dl class="mt-4 space-y-1.5 text-xs text-slate-500 border-t border-slate-100 pt-3">
+                            <div class="flex gap-2" x-show="draft.owner || draft.department">
+                                <dt class="text-slate-400 w-24 flex-shrink-0">Owner</dt>
+                                <dd class="font-medium text-slate-600"><span x-text="draft.owner"></span><span x-show="draft.owner && draft.department"> · </span><span x-text="draft.department"></span></dd>
+                            </div>
+                            <div class="flex gap-2" x-show="draft.topic">
+                                <dt class="text-slate-400 w-24 flex-shrink-0">Topic</dt>
+                                <dd class="font-medium text-slate-600" x-text="draft.topic"></dd>
+                            </div>
+                            <div class="flex gap-2" x-show="draft.academicYear || draft.language">
+                                <dt class="text-slate-400 w-24 flex-shrink-0">Year / lang</dt>
+                                <dd class="font-medium text-slate-600"><span x-text="draft.academicYear"></span><span x-show="draft.academicYear && draft.language"> · </span><span x-text="draft.language"></span></dd>
+                            </div>
+                            <div class="flex gap-2" x-show="draft.version || draft.licence">
+                                <dt class="text-slate-400 w-24 flex-shrink-0">Version</dt>
+                                <dd class="font-medium text-slate-600"><span x-text="draft.version"></span><span x-show="draft.version && draft.licence"> · </span><span x-text="draft.licence"></span></dd>
+                            </div>
+                            <div class="flex gap-2" x-show="draft.reviewDate">
+                                <dt class="text-slate-400 w-24 flex-shrink-0">Review by</dt>
+                                <dd class="font-medium text-slate-600" x-text="formatDate(draft.reviewDate)"></dd>
+                            </div>
+                            <div class="flex gap-2" x-show="draft.keywords">
+                                <dt class="text-slate-400 w-24 flex-shrink-0">Keywords</dt>
+                                <dd class="font-medium text-slate-600"><template x-for="tag in draftCardMeta.tags.slice(0, 6)" :key="tag"><span class="mr-1" x-text="'#' + tag"></span></template></dd>
+                            </div>
+                            <div class="flex gap-2" x-show="draft.accessibility">
+                                <dt class="text-slate-400 w-24 flex-shrink-0">Access</dt>
+                                <dd class="font-medium text-slate-600" x-text="draft.accessibility"></dd>
+                            </div>
+                        </dl>
                     </div>
 
-                    <a :href="githubUploadUrl()" target="_blank" rel="noopener noreferrer"
-                       class="w-full flex items-center justify-center gap-2 border border-slate-300 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-50 transition-colors focus-ring">
-                        <i data-lucide="github" class="w-5 h-5" aria-hidden="true"></i> Upload File Through GitHub
-                        <i data-lucide="external-link" class="w-4 h-4" aria-hidden="true"></i>
-                    </a>
-                </form>
+                    <!-- Live file preview -->
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-4 py-2.5 border-b border-slate-100 text-xs font-semibold text-slate-500 flex items-center gap-2">
+                            <i data-lucide="file-search" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                            File preview
+                        </div>
+                        <template x-if="draftFilePreview">
+                            <iframe :src="draftFilePreview.src" :sandbox="draftFilePreview.sandbox" :title="draftFilePreview.label"
+                                    referrerpolicy="no-referrer"
+                                    class="w-full h-80 border-0 bg-white"></iframe>
+                        </template>
+                        <div x-show="draftFile && !draftFilePreview" class="p-6 text-center">
+                            <i data-lucide="file-warning" class="mx-auto h-8 w-8 text-slate-300" aria-hidden="true"></i>
+                            <p class="text-sm text-slate-500 mt-2">Word, Excel and PowerPoint files are checked by downloading them. An online preview appears once the resource is published.</p>
+                        </div>
+                        <div x-show="!draftFile" class="p-6 text-center">
+                            <i data-lucide="eye" class="mx-auto h-8 w-8 text-slate-300" aria-hidden="true"></i>
+                            <p class="text-sm text-slate-500 mt-2">Choose a file to see the automatic preview.</p>
+                        </div>
+                        <p class="px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100 bg-slate-50">
+                            Previews run in a sandboxed frame. This is exactly what students will see.
+                        </p>
+                    </div>
+                </aside>
             </div>
+        </div>
+
+        <!-- Submissions View (teacher: my submissions / admin: review queue) -->
+        <div x-show="isStaff && currentView === 'submissions'" x-transition x-cloak>
+            <div class="max-w-4xl mx-auto mb-8">
+                <button type="button" @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors mb-3 focus-ring rounded-md">
+                    <i data-lucide="arrow-left" class="w-4 h-4" aria-hidden="true"></i>
+                    Back to Library
+                </button>
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-3xl font-bold text-slate-900" x-text="isAdmin ? 'Review Submissions' : 'My Submissions'"></h2>
+                        <p class="text-slate-600 mt-2 max-w-2xl" x-text="isAdmin
+                            ? 'Approve new teacher submissions to publish them to the library immediately, then copy their metadata to publish them on GitHub for every device.'
+                            : 'Resources you submit from this device appear here. An administrator reviews each one before it joins the public library. Teachers cannot delete uploaded files — ask the administrator if a resource needs to be removed.'"></p>
+                    </div>
+                    <button type="button" @click="openUpload()"
+                            class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm focus-ring">
+                        <i data-lucide="upload" class="w-4 h-4" aria-hidden="true"></i>
+                        Upload Resource
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pending review -->
+            <section aria-labelledby="submissions-pending-heading" class="mb-12">
+                <h3 id="submissions-pending-heading" class="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-1 rounded-full" x-text="pendingSubmissions.length"></span>
+                    Waiting for review
+                </h3>
+
+                <div x-show="pendingSubmissions.length === 0" class="bg-white rounded-xl border border-slate-200 p-10 text-center">
+                    <i data-lucide="check-circle-2" class="mx-auto h-10 w-10 text-emerald-500" aria-hidden="true"></i>
+                    <p class="text-slate-500 mt-3">Nothing is waiting. New teacher submissions will appear here.</p>
+                </div>
+
+                <ul role="list" class="space-y-5">
+                    <template x-for="record in pendingSubmissions" :key="record.id">
+                        <li class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                            <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+                                <div class="min-w-0">
+                                    <h4 class="font-bold text-slate-900 break-words" x-text="record.title"></h4>
+                                    <p class="text-xs text-slate-400 break-all mt-0.5" x-text="record.fileName + ' · ' + formatBytes(record.size)"></p>
+                                </div>
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ring-1 flex-shrink-0"
+                                      :class="submissionStatusAccent(record.status)">
+                                    <i data-lucide="clock" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    <span x-text="submissionStatusLabel(record.status)"></span>
+                                </span>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-1.5 mb-3">
+                                <span x-show="record.subject" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1"
+                                      :class="subjectAccent(record.subject)" x-text="record.subject"></span>
+                                <span x-show="record.years.length" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 ring-1 ring-slate-200"
+                                      x-text="formatYears(record.years)"></span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1"
+                                      :class="visibilityAccent(record.visibility)" x-text="visibilityLabel(record.visibility)"></span>
+                                <span x-show="record.resourceType" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-50 text-slate-500 ring-1 ring-slate-200" x-text="record.resourceType"></span>
+                            </div>
+
+                            <p class="text-sm text-slate-600 mb-4" x-show="record.description" x-text="record.description"></p>
+
+                            <dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1.5 text-xs text-slate-500 border-t border-slate-100 pt-4 mb-5">
+                                <div class="flex gap-2"><dt class="text-slate-400 w-28 flex-shrink-0">Teacher / owner</dt><dd class="font-medium text-slate-600" x-text="record.owner"></dd></div>
+                                <div class="flex gap-2" x-show="record.department"><dt class="text-slate-400 w-28 flex-shrink-0">Department</dt><dd class="font-medium text-slate-600" x-text="record.department"></dd></div>
+                                <div class="flex gap-2"><dt class="text-slate-400 w-28 flex-shrink-0">Language</dt><dd class="font-medium text-slate-600" x-text="record.language"></dd></div>
+                                <div class="flex gap-2" x-show="record.topic"><dt class="text-slate-400 w-28 flex-shrink-0">Topic</dt><dd class="font-medium text-slate-600" x-text="record.topic"></dd></div>
+                                <div class="flex gap-2" x-show="record.academicYear"><dt class="text-slate-400 w-28 flex-shrink-0">Academic year</dt><dd class="font-medium text-slate-600" x-text="record.academicYear"></dd></div>
+                                <div class="flex gap-2"><dt class="text-slate-400 w-28 flex-shrink-0">Version</dt><dd class="font-medium text-slate-600" x-text="record.version"></dd></div>
+                                <div class="flex gap-2" x-show="record.reviewDate"><dt class="text-slate-400 w-28 flex-shrink-0">Review by</dt><dd class="font-medium text-slate-600" x-text="formatDate(record.reviewDate)"></dd></div>
+                                <div class="flex gap-2" x-show="record.licence"><dt class="text-slate-400 w-28 flex-shrink-0">Licence</dt><dd class="font-medium text-slate-600" x-text="record.licence"></dd></div>
+                                <div class="flex gap-2" x-show="record.keywords.length"><dt class="text-slate-400 w-28 flex-shrink-0">Keywords</dt><dd class="font-medium text-slate-600"><template x-for="tag in record.keywords.slice(0, 6)" :key="tag"><span class="mr-1" x-text="'#' + tag"></span></template></dd></div>
+                                <div class="flex gap-2 sm:col-span-2 lg:col-span-3" x-show="record.accessibility"><dt class="text-slate-400 w-28 flex-shrink-0">Accessibility</dt><dd class="font-medium text-slate-600" x-text="record.accessibility"></dd></div>
+                                <div class="flex gap-2"><dt class="text-slate-400 w-28 flex-shrink-0">Submitted</dt><dd class="font-medium text-slate-600" x-text="formatDate(record.submittedAt)"></dd></div>
+                            </dl>
+
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" @click="openSubmissionPreview(record)"
+                                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
+                                    <i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i> Preview
+                                </button>
+                                <button type="button" @click="downloadSubmission(record)"
+                                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
+                                    <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i> Download
+                                </button>
+                                <span class="flex-1"></span>
+                                <!-- Administrator review actions -->
+                                <button type="button" x-show="isAdmin" @click="approveSubmission(record.id)"
+                                        class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors focus-ring">
+                                    <i data-lucide="check" class="w-4 h-4" aria-hidden="true"></i> Approve
+                                </button>
+                                <button type="button" x-show="isAdmin" @click="declineSubmission(record.id)"
+                                        class="inline-flex items-center gap-2 border border-rose-200 text-rose-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-rose-50 transition-colors focus-ring">
+                                    <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i> Decline
+                                </button>
+                            </div>
+                        </li>
+                    </template>
+                </ul>
+            </section>
+
+            <!-- Reviewed -->
+            <section aria-labelledby="submissions-reviewed-heading">
+                <h3 id="submissions-reviewed-heading" class="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <span class="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded-full" x-text="reviewedSubmissions.length"></span>
+                    Reviewed
+                </h3>
+
+                <div x-show="reviewedSubmissions.length === 0" class="bg-white rounded-xl border border-slate-200 p-10 text-center">
+                    <i data-lucide="archive" class="mx-auto h-10 w-10 text-slate-300" aria-hidden="true"></i>
+                    <p class="text-slate-500 mt-3">Reviewed submissions and their outcomes will appear here.</p>
+                </div>
+
+                <ul role="list" class="space-y-4">
+                    <template x-for="record in reviewedSubmissions" :key="record.id">
+                        <li class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <h4 class="font-bold text-slate-900 break-words" x-text="record.title"></h4>
+                                    <p class="text-xs text-slate-400 break-all mt-0.5" x-text="record.fileName"></p>
+                                </div>
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ring-1 flex-shrink-0"
+                                      :class="submissionStatusAccent(record.status)"
+                                      :title="record.reviewedAt ? 'Reviewed ' + formatDate(record.reviewedAt) : ''">
+                                    <i :data-lucide="record.status === 'approved' ? 'check' : 'x'" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    <span x-text="submissionStatusLabel(record.status)"></span>
+                                </span>
+                            </div>
+
+                            <p x-show="record.status === 'rejected' && record.reviewNote"
+                               class="mt-3 text-sm text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2"
+                               x-text="'Administrator’s note: ' + record.reviewNote"></p>
+
+                            <p x-show="record.status === 'approved' && record.published"
+                               class="mt-3 text-sm text-sky-700 bg-sky-50 border border-sky-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
+                                <i data-lucide="cloud" class="w-4 h-4" aria-hidden="true"></i>
+                                Published to the public repository — available on every device.
+                            </p>
+
+                            <div class="flex flex-wrap gap-2 mt-4">
+                                <button type="button" x-show="record.status === 'approved'" @click="viewInLibrary(record)"
+                                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3.5 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
+                                    <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i> View in Library
+                                </button>
+                                <button type="button" x-show="record.status === 'approved'" @click="openSubmissionPreview(record)"
+                                        class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3.5 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
+                                    <i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i> Preview
+                                </button>
+                                <!-- Administrator: publish the approved resource on GitHub -->
+                                <span x-show="isAdmin && record.status === 'approved' && !record.published" class="inline-flex flex-wrap gap-2">
+                                    <button type="button" @click="copySubmissionMetadata(record)"
+                                            class="inline-flex items-center gap-2 bg-slate-900 text-white px-3.5 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 transition-colors focus-ring">
+                                        <i data-lucide="clipboard-copy" class="w-4 h-4" aria-hidden="true"></i> Copy metadata
+                                    </button>
+                                    <a :href="githubUploadUrl()" target="_blank" rel="noopener noreferrer"
+                                       class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3.5 py-2 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors focus-ring">
+                                        <i data-lucide="github" class="w-4 h-4" aria-hidden="true"></i> Upload to GitHub
+                                        <i data-lucide="external-link" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    </a>
+                                    <button type="button" @click="markPublished(record.id)"
+                                            class="inline-flex items-center gap-2 border border-sky-200 text-sky-700 px-3.5 py-2 rounded-lg text-sm font-medium hover:bg-sky-50 transition-colors focus-ring"
+                                            title="After uploading the file and pasting the metadata on GitHub">
+                                        <i data-lucide="cloud-upload" class="w-4 h-4" aria-hidden="true"></i> Done — published
+                                    </button>
+                                </span>
+                                <span class="flex-1"></span>
+                                <button type="button" x-show="isAdmin" @click="deleteSubmission(record.id)"
+                                        :aria-label="'Permanently remove the submission ' + record.title"
+                                        class="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring">
+                                    <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </li>
+                    </template>
+                </ul>
+            </section>
         </div>
 
         <!-- Settings View -->
@@ -781,6 +1240,17 @@
                             <span x-text="preview.item?.meta?.kind"></span>
                             <span x-show="preview.item?.meta?.years?.length"> · <span x-text="formatYears(preview.item?.meta?.years || [])"></span></span>
                             <span> · <span x-text="preview.item?.meta?.subject"></span></span>
+                            <span x-show="preview.item?.meta?.language"> · <span x-text="preview.item?.meta?.language"></span></span>
+                            <span x-show="preview.item?.meta?.version"> · v<span x-text="preview.item?.meta?.version"></span></span>
+                            <span x-show="preview.item?.meta?.visibility !== 'public'"> · <span class="font-medium" x-text="visibilityLabel(preview.item?.meta?.visibility)"></span></span>
+                        </p>
+                        <p class="text-xs text-slate-400 truncate mt-0.5"
+                           x-show="preview.item?.meta?.topic || preview.item?.meta?.department || preview.item?.meta?.owner">
+                            <span x-show="preview.item?.meta?.topic" x-text="preview.item?.meta?.topic"></span>
+                            <span x-show="preview.item?.meta?.topic && preview.item?.meta?.department"> · </span>
+                            <span x-show="preview.item?.meta?.department" x-text="preview.item?.meta?.department"></span>
+                            <span x-show="(preview.item?.meta?.topic || preview.item?.meta?.department) && preview.item?.meta?.owner"> · </span>
+                            <span x-show="preview.item?.meta?.owner" x-text="preview.item?.meta?.owner"></span>
                         </p>
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
@@ -834,26 +1304,31 @@
             </div>
         </div>
 
-        <!-- Admin Sign In Modal -->
+        <!-- Sign In Modal (teacher + administrator) -->
         <div x-show="showLogin" x-cloak
              class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4"
              role="dialog" aria-modal="true" aria-labelledby="login-title"
              @keydown.escape.window="showLogin = false">
             <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm p-6" @click.outside="showLogin = false">
                 <div class="flex items-center gap-2 mb-1">
-                    <div class="bg-indigo-600 p-2 rounded-lg text-white"><i data-lucide="shield" class="w-4 h-4" aria-hidden="true"></i></div>
-                    <h2 id="login-title" class="text-lg font-bold">Administrator Sign In</h2>
+                    <div class="p-2 rounded-lg text-white" :class="loginMode === 'admin' ? 'bg-indigo-600' : 'bg-emerald-600'">
+                        <i :data-lucide="loginMode === 'admin' ? 'shield' : 'graduation-cap'" class="w-4 h-4" aria-hidden="true"></i>
+                    </div>
+                    <h2 id="login-title" class="text-lg font-bold" x-text="loginMode === 'admin' ? 'Administrator Sign In' : 'Teacher Sign In'"></h2>
                 </div>
-                <p class="text-xs text-slate-400 mb-5">Uploading, settings and deletion are restricted to the administrator.</p>
+                <p class="text-xs text-slate-400 mb-5"
+                   x-text="loginMode === 'admin'
+                        ? 'Approving submissions, deleting files and settings are restricted to the administrator.'
+                        : 'Teachers sign in to upload resources. Ask the administrator for the shared staff username and password.'"></p>
                 <form @submit.prevent="login()" class="space-y-4">
                     <div>
-                        <label for="admin-user" class="block text-sm font-medium text-slate-700 mb-1">Username</label>
-                        <input id="admin-user" type="text" x-model="loginForm.username" autocomplete="username" required
+                        <label for="login-user" class="block text-sm font-medium text-slate-700 mb-1">Username</label>
+                        <input id="login-user" type="text" x-model="loginForm.username" autocomplete="username" required
                                class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
                     </div>
                     <div>
-                        <label for="admin-pass" class="block text-sm font-medium text-slate-700 mb-1">Password</label>
-                        <input id="admin-pass" type="password" x-model="loginForm.password" autocomplete="current-password" required
+                        <label for="login-pass" class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                        <input id="login-pass" type="password" x-model="loginForm.password" autocomplete="current-password" required
                                class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
                     </div>
                     <p x-show="loginError" x-text="loginError" class="text-sm text-red-600" role="alert"></p>
@@ -861,10 +1336,19 @@
                         <button type="button" @click="showLogin = false"
                                 class="flex-1 border border-slate-300 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-50 focus-ring">Cancel</button>
                         <button type="submit" :disabled="checkingLogin" aria-label="Sign in"
-                                class="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 focus-ring">
+                                class="flex-1 text-white py-2 rounded-lg font-bold disabled:opacity-50 focus-ring"
+                                :class="loginMode === 'admin' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'">
                             <span x-text="checkingLogin ? 'Checking...' : 'Sign In'"></span>
                         </button>
                     </div>
+                    <button type="button" x-show="loginMode === 'teacher'" @click="openLogin('admin')"
+                            class="w-full text-xs text-slate-400 hover:text-slate-600 transition-colors focus-ring rounded px-1 py-0.5">
+                        Administrator? Sign in with the admin account
+                    </button>
+                    <button type="button" x-show="loginMode === 'admin'" @click="openLogin('teacher')"
+                            class="w-full text-xs text-slate-400 hover:text-slate-600 transition-colors focus-ring rounded px-1 py-0.5">
+                        A teacher? Use the teacher login
+                    </button>
                 </form>
             </div>
         </div>

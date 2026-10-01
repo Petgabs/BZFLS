@@ -82,3 +82,24 @@ export function describeFilters({ query = '', subject = '', year = '', kind = ''
   if (kind === 'document') parts.push('that are documents');
   return parts.join(' ');
 }
+
+/** Badge classes per visibility value, used on cards and detail rows. */
+export function visibilityAccent(visibility) {
+  if (visibility === 'school') return 'bg-amber-50 text-amber-700 ring-amber-200';
+  if (visibility === 'class') return 'bg-violet-50 text-violet-700 ring-violet-200';
+  return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
+}
+
+/** Status badge classes for a submission's review state. */
+export function submissionStatusAccent(status) {
+  if (status === 'approved') return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
+  if (status === 'rejected') return 'bg-rose-50 text-rose-700 ring-rose-200';
+  return 'bg-amber-50 text-amber-700 ring-amber-200';
+}
+
+/** Human label for a submission status. */
+export function submissionStatusLabel(status) {
+  if (status === 'approved') return 'Approved — in the library';
+  if (status === 'rejected') return 'Not approved';
+  return 'Pending review';
+}

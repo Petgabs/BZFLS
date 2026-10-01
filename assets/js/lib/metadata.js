@@ -17,7 +17,7 @@ export const UNKNOWN_SUBJECT = 'General';
 // Each subject lists the keywords that identify it. Order matters only in that
 // the first subject with a match wins, so put narrower subjects first.
 export const SUBJECTS = [
-  { name: 'Mathematics', keywords: ['math', 'maths', 'mathematics', 'algebra', 'geometry', 'calculus', 'trigonometry', 'statistics', 'arithmetic', 'numeracy'] },
+  { name: 'Mathematics', keywords: ['math', 'maths', 'mathematics', 'algebra', 'geometry', 'calculus', 'trigonometry', 'statistics', 'arithmetic', 'numeracy', 'probability', 'distribution', 'equations', 'differentiation', 'integration', 'matrices', 'combinatorics'] },
   { name: 'Physics', keywords: ['physics', 'mechanics', 'kinematics', 'optics', 'thermodynamics'] },
   { name: 'Chemistry', keywords: ['chemistry', 'chemical', 'periodic', 'organic', 'titration'] },
   { name: 'Biology', keywords: ['biology', 'biological', 'anatomy', 'genetics', 'ecology', 'photosynthesis'] },
@@ -47,6 +47,53 @@ export const RESOURCE_TYPE_NAMES = {
   ppt: 'PowerPoint presentation',
   pptx: 'PowerPoint presentation'
 };
+
+// ---------------------------------------------------------------------------
+// Structured metadata vocabulary.
+//
+// The file name is *never* the primary title: a human-readable title is
+// supplied by the teacher (or curated in library.json) and the file name is
+// kept as secondary, searchable text. "16G.pdf" tells a student far less than
+// "Continuous Probability Distributions — Exercise 16G Solutions".
+// ---------------------------------------------------------------------------
+
+/** Visibility of a resource, as set by the teacher. */
+export const VISIBILITY_PUBLIC = 'public';
+export const VISIBILITY_SCHOOL = 'school';
+export const VISIBILITY_CLASS = 'class';
+
+export const VISIBILITY_OPTIONS = [
+  { value: VISIBILITY_PUBLIC, label: 'Public', hint: 'Listed for everyone, including families and the wider community.' },
+  { value: VISIBILITY_SCHOOL, label: 'School only', hint: 'Intended for staff and students of the school.' },
+  { value: VISIBILITY_CLASS, label: 'Class only', hint: 'Intended for one class or teaching group.' }
+];
+
+const VISIBILITY_LABELS = {
+  [VISIBILITY_PUBLIC]: 'Public',
+  [VISIBILITY_SCHOOL]: 'School only',
+  [VISIBILITY_CLASS]: 'Class only'
+};
+
+/** Normalise any input to a known visibility value (default: public). */
+export function normaliseVisibility(value) {
+  const text = String(value || '').trim().toLowerCase().replace(/[\s_-]+/g, '-');
+  if (text === 'school' || text === 'school-only' || text === 'internal') return VISIBILITY_SCHOOL;
+  if (text === 'class' || text === 'class-only' || text === 'classroom') return VISIBILITY_CLASS;
+  return VISIBILITY_PUBLIC;
+}
+
+/** Human label for a visibility value. */
+export function visibilityLabel(value) {
+  return VISIBILITY_LABELS[normaliseVisibility(value)] || VISIBILITY_LABELS[VISIBILITY_PUBLIC];
+}
+
+/** True when a review/expiry date exists and has passed. */
+export function isReviewDue(reviewDate, now = new Date()) {
+  if (!reviewDate) return false;
+  const date = new Date(reviewDate);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.getTime() <= now.getTime();
+}
 
 /** Lowercase extension without the dot, or '' when there is none. */
 export function extensionOf(fileName) {
@@ -144,35 +191,76 @@ export function normaliseTags(value) {
 /**
  * Build the full metadata record for one library item.
  *
+ * Values are resolved from three layers, in increasing order of authority:
+ * inference from the text, fields carried on the item itself (uploads and
+ * approved submissions persist their metadata there), and library.json
+ * overrides curated by the administrator.
+ *
+ * `tags` and `keywords` are synonyms: library.json has always used `tags`,
+ * while the upload form labels the field "Keywords". Both are normalised
+ * into `meta.tags`.
+ *
  * @param {object} item      Raw app/resource record.
  * @param {object} overrides library.json entry for this item, if any.
  */
 export function buildMetadata(item, overrides = {}) {
   const fileName = item?.fileName || '';
-  const searchText = [fileName, item?.name, item?.description, overrides?.description]
+  const searchText = [fileName, item?.name, item?.description, overrides?.description, item?.topic]
     .filter(Boolean)
     .join(' ');
 
-  const subject = overrides.subject
-    ? String(overrides.subject).trim()
+  const subject = (overrides.subject || item?.subject)
+    ? String(overrides.subject || item?.subject).trim()
     : inferSubject(searchText);
 
-  const years = Array.isArray(overrides.years) && overrides.years.length
-    ? [...new Set(overrides.years.map(Number).filter(year => Number.isFinite(year)))].sort((a, b) => a - b)
+  const rawYears = Array.isArray(overrides.years) && overrides.years.length
+    ? overrides.years
+    : (Array.isArray(item?.years) && item.years.length ? item.years : null);
+  const years = rawYears
+    ? [...new Set(rawYears.map(Number).filter(year => Number.isFinite(year)))].sort((a, b) => a - b)
     : inferYears(searchText);
 
-  const tags = normaliseTags(overrides.tags);
+  const rawTags = overrides.tags ?? overrides.keywords ?? item?.keywords ?? item?.tags;
+  const tags = normaliseTags(rawTags);
   const extension = extensionOf(fileName);
 
+  const pick = (key, fallback = '') => {
+    const value = overrides[key] ?? item?.[key];
+    return value === undefined || value === null ? fallback : String(value).trim();
+  };
+
+  const visibility = normaliseVisibility(overrides.visibility ?? item?.visibility);
+
   return {
+    // The human title. Never the bare file name — the name is kept as
+    // secondary text and remains searchable.
+    title: String(overrides.title || item?.name || titleFromFileName(fileName) || 'Untitled').trim(),
     subject: subject || UNKNOWN_SUBJECT,
     years,
     tags,
     extension,
     kind: kindOf(fileName),
     isMiniApp: isMiniApp(fileName),
+    topic: pick('topic'),
+    resourceType: pick('resourceType'),
+    language: pick('language') || 'English',
+    owner: String(overrides.owner || item?.teacherName || '').trim(),
+    department: pick('department'),
+    academicYear: pick('academicYear'),
+    visibility,
+    version: pick('version', '1.0') || '1.0',
+    reviewDate: pick('reviewDate'),
+    licence: pick('licence'),
+    accessibility: pick('accessibility'),
     // Whether any of the values above were curated rather than guessed.
-    curated: Boolean(overrides.subject || overrides.years || overrides.tags || overrides.description)
+    curated: Boolean(
+      overrides.subject || overrides.years || overrides.tags || overrides.keywords ||
+      overrides.description || overrides.title || overrides.topic || overrides.resourceType ||
+      overrides.language || overrides.department || overrides.academicYear ||
+      overrides.visibility || overrides.version || overrides.reviewDate ||
+      overrides.licence || overrides.accessibility ||
+      item?.subject || item?.keywords || item?.topic
+    )
   };
 }
 

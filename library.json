@@ -4,7 +4,15 @@
     "(or just the file name). Anything omitted is inferred from the file name",
     "by assets/js/lib/metadata.js, so this file is entirely optional.",
     "",
-    "Supported fields: subject, years (array), tags (array), description."
+    "Supported fields: title, description, subject, years (array),",
+    "tags/keywords (array — synonyms), topic, resourceType, language, owner,",
+    "department, academicYear, visibility (public | school | class), version,",
+    "reviewDate, licence, accessibility.",
+    "",
+    "`title` is the resource's real, human-readable name and always wins over",
+    "the file name: 16G.pdf tells a student far less than a proper title.",
+    "Entries produced by the teacher upload workflow can be copied straight",
+    "from the Review Submissions screen (\"Copy metadata\")."
   ],
 
   "apps/Year 10 & 11  class schedule.pdf": {
@@ -15,9 +23,21 @@
   },
 
   "apps/16G.pdf": {
-    "subject": "Administration",
-    "years": [10],
-    "tags": ["class list", "form group"],
-    "description": "Form group 16G reference sheet."
+    "title": "Continuous Probability Distributions — Exercise 16G Solutions",
+    "description": "Worked solutions for Exercise 16G on continuous probability distributions, including CDF and PDF questions with full working. Use alongside the textbook exercise for self-checking.",
+    "subject": "Mathematics",
+    "years": [12],
+    "topic": "Continuous probability distributions (random variables, CDF/PDF)",
+    "resourceType": "Exercise solutions",
+    "language": "English",
+    "owner": "Mathematics Department",
+    "department": "Mathematics",
+    "academicYear": "2026",
+    "keywords": ["probability", "continuous distributions", "solutions", "hsc", "revision"],
+    "visibility": "school",
+    "version": "1.1",
+    "reviewDate": "2027-01-31",
+    "licence": "School use only — check with the owner",
+    "accessibility": "Tagged PDF; worked steps are also readable as plain text."
   }
 }
