@@ -1,7 +1,7 @@
 [
   {
     "id": "c531050d-bc5c-407e-8843-15c0edf451be",
-    "path": "submissions/pending/c531050d-bc5c-407e-8843-15c0edf451be__Year 10 & 11  class schedule.pdf",
+    "path": "",
     "fileName": "Year 10 & 11  class schedule.pdf",
     "size": 778028,
     "mime": "application/pdf",
@@ -25,12 +25,12 @@
     "accessibility": "",
     "submittedBy": "teacher",
     "submittedAt": "2026-10-01T06:51:17.457Z",
-    "status": "pending",
-    "reviewedAt": "",
-    "reviewedBy": "",
+    "status": "approved",
+    "reviewedAt": "2026-10-01T06:54:59.882Z",
+    "reviewedBy": "administrator",
     "reviewNote": "",
-    "published": false,
-    "publishedPath": "",
-    "commitUrl": ""
+    "published": true,
+    "publishedPath": "apps/Year 10 & 11  class schedule.pdf",
+    "commitUrl": "https://github.com/Petgabs/BZFLS/commit/18beb46da854631307205c8eb6740949cf6cedd8"
   }
 ]
