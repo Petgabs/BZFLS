@@ -38,5 +38,17 @@
     "language": "English",
     "owner": "Peter",
     "version": "1.0"
+  },
+  "apps/seat plan-Version 4.docx": {
+    "title": "Seat plan",
+    "description": "Study",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "version": "1.0"
   }
 }
