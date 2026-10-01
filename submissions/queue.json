@@ -1,1 +1,36 @@
-[]
+[
+  {
+    "id": "c531050d-bc5c-407e-8843-15c0edf451be",
+    "path": "submissions/pending/c531050d-bc5c-407e-8843-15c0edf451be__Year 10 & 11  class schedule.pdf",
+    "fileName": "Year 10 & 11  class schedule.pdf",
+    "size": 778028,
+    "mime": "application/pdf",
+    "title": "Schedule",
+    "description": "Study",
+    "subject": "Others",
+    "years": [
+      10
+    ],
+    "topic": "",
+    "resourceType": "",
+    "language": "English",
+    "owner": "Peter",
+    "department": "",
+    "academicYear": "",
+    "keywords": [],
+    "visibility": "public",
+    "version": "1.0",
+    "reviewDate": "",
+    "licence": "",
+    "accessibility": "",
+    "submittedBy": "teacher",
+    "submittedAt": "2026-10-01T06:51:17.457Z",
+    "status": "pending",
+    "reviewedAt": "",
+    "reviewedBy": "",
+    "reviewNote": "",
+    "published": false,
+    "publishedPath": "",
+    "commitUrl": ""
+  }
+]
