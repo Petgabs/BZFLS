@@ -83,6 +83,36 @@ next to each reviewed submission.
   connected token, the button falls back to opening the manual delete page
   on github.com instead.
 
+### Resource Statistics (Admin Dashboard)
+
+The **Admin Dashboard** has a **Resource Statistics** section, built entirely
+from data the site already has — every file currently published in
+`apps/`, enriched with the matching record from the cross-device review queue
+(`submissions/queue.json`, see [below](#the-review-queue-cross-device)) when
+one exists. Nothing new is stored anywhere; it is a live read of the library,
+the queue and the download counters (`assets/js/lib/resourceStats.js`).
+
+| What it shows | Where it comes from |
+| --- | --- |
+| **Teacher Activity** — resources uploaded, year/subject spread, total storage, last upload per teacher | `owner` on the matching submission (falls back to the curated `owner` in `library.json`) |
+| **Resources by Year Level** — Year 9 / 10 / 11 / 12 counts | the `years` classification on each published resource |
+| **Resources by Subject** — count and storage per subject | the `subject` classification on each published resource |
+| **Cloud Storage Used** — total bytes occupied in the GitHub cloud, and how many files that total covers | file size recorded at upload time (submissions always know it; a file published by hand with no submission record is counted as "unknown size" rather than guessed) |
+| **How Long Resources Have Been in the Cloud** — grouped into *this week*, *1–2 weeks ago*, *about a month ago* and *over a month ago* | each submission's `submittedAt` timestamp |
+| **Resources to Review for Deletion** — old files with few or no downloads, oldest first, with a one-click delete | the same storage data crossed with the existing download counters (Settings → thresholds are adjustable: minimum age and maximum downloads) |
+
+**"Last upload" stands in for "last login".** This site has no server-side
+session log — teachers share one login (see [Roles](#roles)) — so the closest
+honest signal to "when a teacher was last active" is the most recent
+timestamp on anything they uploaded. The dashboard labels it as such rather
+than claiming to know a real sign-in time.
+
+A resource published directly on github.com (not through the upload
+workflow) has no submission record, so its upload date and exact size are
+unknown; it still counts in the per-teacher/year/subject totals (using the
+owner/subject/years curated in `library.json`) but is excluded from the age
+buckets and the cleanup list, since "unknown" is not evidence of staleness.
+
 ### Auto-publish on approval (one click, straight to GitHub)
 
 With a GitHub Auto-Publish token connected (Settings → GitHub Auto-Publish),

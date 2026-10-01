@@ -741,6 +741,277 @@
                     </table>
                 </div>
             </div>
+
+            <!-- Resource Statistics -->
+            <section class="mt-10" aria-labelledby="resource-stats-heading">
+                <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+                    <div>
+                        <h3 id="resource-stats-heading" class="text-xl font-bold text-slate-900 flex items-center gap-2">
+                            <i data-lucide="bar-chart-3" class="w-5 h-5 text-indigo-600" aria-hidden="true"></i>
+                            Resource Statistics
+                        </h3>
+                        <p class="text-slate-600 text-sm mt-1">
+                            Teacher activity, year/subject coverage, GitHub cloud storage and upload freshness — built
+                            from every file currently published in <code class="text-xs bg-slate-100 px-1 py-0.5 rounded">apps/</code>
+                            and the shared teacher-upload record for it, so it is the same for every administrator.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Storage summary cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Cloud Storage Used</span>
+                            <i data-lucide="hard-drive" class="w-4 h-4 text-indigo-600" aria-hidden="true"></i>
+                        </div>
+                        <p class="text-3xl font-bold text-slate-900" x-text="formatBytes(cloudStorageStatistics.totalBytes) || '0 B'"></p>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Across <span x-text="cloudStorageStatistics.knownCount"></span> of <span x-text="cloudStorageStatistics.totalCount"></span> cloud files
+                            <span x-show="cloudStorageStatistics.unknownCount > 0" x-text="'(' + cloudStorageStatistics.unknownCount + ' of unknown size)'"></span>
+                        </p>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Teachers Publishing</span>
+                            <i data-lucide="users-round" class="w-4 h-4 text-emerald-600" aria-hidden="true"></i>
+                        </div>
+                        <p class="text-3xl font-bold text-slate-900" x-text="teacherStatistics.length"></p>
+                        <p class="text-xs text-slate-500 mt-1">Distinct names attributed to a cloud file</p>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Unclassified</span>
+                            <i data-lucide="help-circle" class="w-4 h-4 text-amber-500" aria-hidden="true"></i>
+                        </div>
+                        <p class="text-3xl font-bold text-slate-900" x-text="yearLevelStatistics.unclassified"></p>
+                        <p class="text-xs text-slate-500 mt-1">Cloud files with no Year 9–12 level set</p>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Needs Review</span>
+                            <i data-lucide="trash-2" class="w-4 h-4 text-rose-500" aria-hidden="true"></i>
+                        </div>
+                        <p class="text-3xl font-bold text-slate-900" x-text="cleanupCandidates.length"></p>
+                        <p class="text-xs text-slate-500 mt-1">Old &amp; rarely downloaded — see below</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Year level breakdown -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h4 class="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                            <i data-lucide="graduation-cap" class="w-4 h-4 text-indigo-600" aria-hidden="true"></i>
+                            Resources by Year Level
+                        </h4>
+                        <div class="space-y-3">
+                            <template x-for="year in yearLevels" :key="'year-' + year">
+                                <div>
+                                    <div class="flex items-center justify-between text-sm mb-1">
+                                        <span class="text-slate-600">Year <span x-text="year"></span></span>
+                                        <span class="font-semibold text-slate-900" x-text="yearLevelStatistics.counts[year]"></span>
+                                    </div>
+                                    <div class="w-full bg-slate-100 rounded-full h-2">
+                                        <div class="bg-indigo-500 h-2 rounded-full transition-all"
+                                             :style="`width: ${cloudStorageStatistics.totalCount ? Math.round((yearLevelStatistics.counts[year] / cloudStorageStatistics.totalCount) * 100) : 0}%`"></div>
+                                    </div>
+                                </div>
+                            </template>
+                            <p class="text-xs text-slate-400 pt-1" x-show="yearLevelStatistics.unclassified > 0">
+                                <span x-text="yearLevelStatistics.unclassified"></span> file(s) have no year level set.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Subject breakdown -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h4 class="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                            <i data-lucide="book-open" class="w-4 h-4 text-indigo-600" aria-hidden="true"></i>
+                            Resources by Subject
+                        </h4>
+                        <template x-if="subjectStatistics.length === 0">
+                            <p class="text-sm text-slate-500">No subjects classified yet.</p>
+                        </template>
+                        <div class="space-y-3">
+                            <template x-for="entry in subjectStatistics" :key="'subject-' + entry.subject">
+                                <div>
+                                    <div class="flex items-center justify-between text-sm mb-1">
+                                        <span class="text-slate-600" x-text="entry.subject"></span>
+                                        <span class="font-semibold text-slate-900">
+                                            <span x-text="entry.count"></span>
+                                            <span class="text-slate-400 font-normal" x-show="entry.totalSize > 0" x-text="'· ' + formatBytes(entry.totalSize)"></span>
+                                        </span>
+                                    </div>
+                                    <div class="w-full bg-slate-100 rounded-full h-2">
+                                        <div class="bg-emerald-500 h-2 rounded-full transition-all"
+                                             :style="`width: ${cloudStorageStatistics.totalCount ? Math.round((entry.count / cloudStorageStatistics.totalCount) * 100) : 0}%`"></div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Per-teacher table -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+                    <div class="px-6 py-4 border-b border-slate-200">
+                        <h4 class="font-bold text-slate-900">Teacher Activity</h4>
+                        <p class="text-xs text-slate-400 mt-0.5">
+                            Uploads, storage, year/subject coverage and last upload (the closest signal to "last login"
+                            this site has, since teachers share one login).
+                        </p>
+                    </div>
+                    <template x-if="teacherStatistics.length === 0">
+                        <p class="px-6 py-10 text-center text-slate-500 text-sm">No cloud files are attributed to a teacher yet.</p>
+                    </template>
+                    <div x-show="teacherStatistics.length > 0" class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <caption class="sr-only">Upload activity per teacher</caption>
+                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                                <tr>
+                                    <th scope="col" class="text-left font-semibold px-6 py-3">Teacher</th>
+                                    <th scope="col" class="text-left font-semibold px-6 py-3">Resources</th>
+                                    <th scope="col" class="text-left font-semibold px-6 py-3 hidden sm:table-cell">Years</th>
+                                    <th scope="col" class="text-left font-semibold px-6 py-3 hidden md:table-cell">Subjects</th>
+                                    <th scope="col" class="text-left font-semibold px-6 py-3 hidden sm:table-cell">Storage</th>
+                                    <th scope="col" class="text-left font-semibold px-6 py-3">Last Upload (last login proxy)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <template x-for="teacher in teacherStatistics" :key="teacher.owner">
+                                    <tr class="hover:bg-slate-50 align-top">
+                                        <th scope="row" class="px-6 py-4 text-left font-medium text-slate-900" x-text="teacher.owner"></th>
+                                        <td class="px-6 py-4 font-semibold text-slate-900" x-text="teacher.uploads"></td>
+                                        <td class="px-6 py-4 hidden sm:table-cell text-slate-600">
+                                            <template x-for="year in yearLevels" :key="teacher.owner + '-y-' + year">
+                                                <span x-show="teacher.yearCounts[year] > 0"
+                                                      class="inline-block text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2 py-1 rounded mr-1 mb-1">
+                                                    Y<span x-text="year"></span>: <span x-text="teacher.yearCounts[year]"></span>
+                                                </span>
+                                            </template>
+                                        </td>
+                                        <td class="px-6 py-4 hidden md:table-cell text-slate-600">
+                                            <template x-for="(count, subject) in teacher.subjectCounts" :key="teacher.owner + '-s-' + subject">
+                                                <span class="inline-block text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 px-2 py-1 rounded mr-1 mb-1">
+                                                    <span x-text="subject"></span>: <span x-text="count"></span>
+                                                </span>
+                                            </template>
+                                        </td>
+                                        <td class="px-6 py-4 hidden sm:table-cell text-slate-600" x-text="formatBytes(teacher.totalSize) || '—'"></td>
+                                        <td class="px-6 py-4 text-slate-600">
+                                            <span x-show="teacher.lastUploadAt" x-text="formatDate(teacher.lastUploadAt)"></span>
+                                            <span class="block text-xs text-slate-400" x-show="teacher.lastUploadAt"
+                                                  x-text="teacher.lastUploadDaysAgo < 1 ? 'today' : Math.round(teacher.lastUploadDaysAgo) + ' day(s) ago'"></span>
+                                            <span x-show="!teacher.lastUploadAt" class="text-slate-400">Unknown</span>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Cloud age buckets -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+                    <div class="px-6 py-4 border-b border-slate-200">
+                        <h4 class="font-bold text-slate-900">How Long Resources Have Been in the Cloud</h4>
+                        <p class="text-xs text-slate-400 mt-0.5">Grouped by time since upload. Click a row to see the files in it.</p>
+                    </div>
+                    <ul class="divide-y divide-slate-100">
+                        <template x-for="bucket in ageBuckets" :key="'bucket-' + bucket">
+                            <li>
+                                <button type="button" @click="setStatsAgeBucket(bucket)"
+                                        class="w-full flex items-center justify-between gap-4 px-6 py-3.5 text-left hover:bg-slate-50 transition-colors focus-ring">
+                                    <span class="flex items-center gap-2 text-sm font-medium text-slate-700">
+                                        <i :data-lucide="statsAgeBucketOpen === bucket ? 'chevron-down' : 'chevron-right'" class="w-4 h-4 text-slate-400" aria-hidden="true"></i>
+                                        <span x-text="ageBucketLabels[bucket]"></span>
+                                    </span>
+                                    <span class="text-xs font-bold uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full"
+                                          x-text="resourcesByAgeBucket[bucket].length + ' file' + (resourcesByAgeBucket[bucket].length === 1 ? '' : 's')"></span>
+                                </button>
+                                <div x-show="statsAgeBucketOpen === bucket" x-transition x-cloak class="px-6 pb-4">
+                                    <template x-if="resourcesByAgeBucket[bucket].length === 0">
+                                        <p class="text-sm text-slate-400 py-2">No files in this group.</p>
+                                    </template>
+                                    <ul class="space-y-2">
+                                        <template x-for="item in resourcesByAgeBucket[bucket]" :key="'age-' + bucket + '-' + item.id">
+                                            <li class="flex items-center justify-between gap-3 bg-slate-50 rounded-lg px-3 py-2 text-sm">
+                                                <div class="min-w-0">
+                                                    <p class="font-medium text-slate-800 truncate" x-text="item.title"></p>
+                                                    <p class="text-xs text-slate-400 truncate">
+                                                        <span x-text="item.owner || 'Unattributed'"></span>
+                                                        <span x-show="item.uploadedAt"> · <span x-text="formatDate(item.uploadedAt)"></span></span>
+                                                        · <span x-text="formatDownloadCount(item.downloads)"></span>
+                                                    </p>
+                                                </div>
+                                                <button type="button" @click="deleteCloudResourceById(item.id)"
+                                                        :aria-label="'Delete ' + item.title"
+                                                        class="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring shrink-0">
+                                                    <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                                                </button>
+                                            </li>
+                                        </template>
+                                    </ul>
+                                </div>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+
+                <!-- Cleanup candidates -->
+                <div class="bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-amber-100 bg-amber-50/60 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h4 class="font-bold text-slate-900 flex items-center gap-2">
+                                <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600" aria-hidden="true"></i>
+                                Resources to Review for Deletion
+                            </h4>
+                            <p class="text-xs text-slate-500 mt-0.5">
+                                Published at least <span x-text="statsCleanupMinAgeDays"></span> day(s) ago with
+                                <span x-text="statsCleanupMaxDownloads"></span> or fewer downloads. Oldest first.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-3 text-xs text-slate-600">
+                            <label class="flex items-center gap-1.5">
+                                Min. age (days)
+                                <input type="number" min="0" x-model.number="statsCleanupMinAgeDays"
+                                       class="w-16 px-2 py-1 border border-slate-200 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none">
+                            </label>
+                            <label class="flex items-center gap-1.5">
+                                Max. downloads
+                                <input type="number" min="0" x-model.number="statsCleanupMaxDownloads"
+                                       class="w-16 px-2 py-1 border border-slate-200 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none">
+                            </label>
+                        </div>
+                    </div>
+                    <template x-if="cleanupCandidates.length === 0">
+                        <p class="px-6 py-10 text-center text-slate-500 text-sm">Nothing matches these thresholds — the library looks healthy.</p>
+                    </template>
+                    <ul x-show="cleanupCandidates.length > 0" class="divide-y divide-slate-100">
+                        <template x-for="item in cleanupCandidates" :key="'cleanup-' + item.id">
+                            <li class="flex items-center justify-between gap-4 px-6 py-3.5">
+                                <div class="min-w-0">
+                                    <p class="font-medium text-slate-900 truncate" x-text="item.title"></p>
+                                    <p class="text-xs text-slate-500 truncate">
+                                        <span x-text="item.owner || 'Unattributed'"></span> ·
+                                        <span x-text="item.subject || 'Unclassified'"></span> ·
+                                        uploaded <span x-text="formatDate(item.uploadedAt)"></span>
+                                        (<span x-text="Math.round(item.ageDays)"></span> days ago) ·
+                                        <span x-text="formatDownloadCount(item.downloads)"></span>
+                                    </p>
+                                </div>
+                                <button type="button" @click="deleteCloudResourceById(item.id)"
+                                        :disabled="deletingAppId === item.id"
+                                        :aria-label="'Delete ' + item.title"
+                                        class="inline-flex items-center gap-1.5 shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors focus-ring disabled:opacity-60">
+                                    <i :data-lucide="deletingAppId === item.id ? 'loader-2' : 'trash-2'" class="w-3.5 h-3.5" :class="deletingAppId === item.id && 'animate-spin'" aria-hidden="true"></i>
+                                    Delete
+                                </button>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+            </section>
         </div>
 
         <!-- Upload View (teachers + admin) -->
