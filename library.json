@@ -127,5 +127,19 @@
     "department": "Mathematics",
     "version": "1.0",
     "addedAt": "2026-10-01T12:50:18.394Z"
+  },
+  "apps/Year_12_Mathematics_Advanced_Topic_MCQ_Practice.html": {
+    "title": "MAD 12 MCQ Revision (By Topic) — Mini app",
+    "description": "Download this file and open to your internet browser",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0",
+    "addedAt": "2026-10-01T12:55:47.441Z"
   }
 }
