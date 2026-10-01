@@ -149,6 +149,35 @@ export function mergeLibraryEntry(currentText, key, entry) {
   return `${JSON.stringify(data, null, 2)}\n`;
 }
 
+/**
+ * Remove one entry from the text of library.json, the inverse of
+ * mergeLibraryEntry(). Pure: takes the current file text, returns the new
+ * text, or `null` when there is nothing to change (missing/empty file, or
+ * the key is not present) so the caller can skip a no-op commit.
+ *
+ * @param {string} currentText  Current library.json content.
+ * @param {string} key          Repository path, e.g. 'apps/16G.pdf'.
+ */
+export function removeLibraryEntry(currentText, key) {
+  const text = String(currentText || '').trim();
+  if (!text) return null;
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    throw new GithubPublishError(
+      'library.json in the repository is not valid JSON, so the entry cannot be removed automatically. Fix the file on GitHub first.',
+      0
+    );
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new GithubPublishError('library.json must contain a JSON object of path → metadata entries.', 0);
+  }
+  if (!(key in data)) return null;
+  delete data[key];
+  return `${JSON.stringify(data, null, 2)}\n`;
+}
+
 // --- Client -------------------------------------------------------------------
 
 /**
@@ -267,6 +296,41 @@ export function createGithubPublisher(config = {}) {
         contentSha: data?.content?.sha || '',
         htmlUrl: data?.content?.html_url || ''
       };
+    },
+
+    /**
+     * Delete a file via the Contents API.
+     *
+     * @param {object} options { path, sha, message }  `sha` is the current
+     *        blob SHA (from getFile()) and is required by GitHub.
+     * Returns { commitSha, commitUrl }.
+     */
+    async deleteFile(options) {
+      const body = {
+        message: String(options.message || 'Delete via School Cloud System'),
+        sha: String(options.sha || ''),
+        branch
+      };
+      if (!body.sha) {
+        throw new GithubPublishError('Missing the file SHA, so GitHub cannot confirm which version to delete.', 0);
+      }
+
+      let response;
+      try {
+        response = await fetchImpl(contentsUrl(options.path), {
+          method: 'DELETE',
+          headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+      } catch {
+        throw new GithubPublishError('GitHub could not be reached. Check the connection and try again.', 0);
+      }
+      if (!response.ok) throw friendly(await apiError(response, `GitHub returned ${response.status}`));
+      const data = await response.json();
+      return {
+        commitSha: data?.commit?.sha || '',
+        commitUrl: data?.commit?.html_url || ''
+      };
     }
   };
 }
@@ -333,6 +397,57 @@ export async function publishSubmissionToGithub(publisher, input) {
     fileCommitUrl: fileResult.commitUrl,
     libraryCommitUrl: libraryResult.commitUrl,
     // The metadata commit is the tip of the publish; link to it by default.
+    commitUrl: libraryResult.commitUrl || fileResult.commitUrl
+  };
+}
+
+/**
+ * Delete a previously published file from the repository: removes it from
+ * `apps/` and drops its entry from `library.json`, as up to two commits on
+ * the configured branch. Mirrors publishSubmissionToGithub() in reverse, so
+ * the admin dashboard can offer a genuine one-click "Delete from GitHub"
+ * next to every cloud file, instead of only a link to github.com.
+ *
+ * @param {object} publisher  From createGithubPublisher().
+ * @param {object} input      { path }  Repository path, e.g. 'apps/16G.pdf'.
+ * Returns { path, fileCommitUrl, libraryCommitUrl, commitUrl, existed }.
+ */
+export async function deleteFileFromGithub(publisher, input) {
+  const path = String(input?.path || '').trim().replace(/^\/+/, '');
+  if (!path) throw new GithubPublishError('No file path was given to delete.', 0);
+
+  const existing = await publisher.getFile(path);
+  let fileResult = { commitUrl: '' };
+  if (existing.exists) {
+    fileResult = await publisher.deleteFile({
+      path,
+      sha: existing.sha,
+      message: `Delete ${path} (via School Cloud System)`
+    });
+  }
+
+  // Metadata clean-up is best-effort: library.json may be missing, may not
+  // reference this path, or the delete may be the only thing the caller
+  // wants — any of those is a no-op, not a failure.
+  let libraryResult = { commitUrl: '' };
+  const library = await publisher.getFile('library.json');
+  if (library.exists) {
+    const mergedText = removeLibraryEntry(library.text, path);
+    if (mergedText !== null) {
+      libraryResult = await publisher.putFile({
+        path: 'library.json',
+        contentBase64: textToBase64(mergedText),
+        sha: library.sha,
+        message: `Remove metadata for ${path} (via School Cloud System)`
+      });
+    }
+  }
+
+  return {
+    path,
+    existed: existing.exists,
+    fileCommitUrl: fileResult.commitUrl,
+    libraryCommitUrl: libraryResult.commitUrl,
     commitUrl: libraryResult.commitUrl || fileResult.commitUrl
   };
 }

@@ -15,8 +15,10 @@ import {
   textToBase64,
   base64ToText,
   mergeLibraryEntry,
+  removeLibraryEntry,
   createGithubPublisher,
-  publishSubmissionToGithub
+  publishSubmissionToGithub,
+  deleteFileFromGithub
 } from '../assets/js/lib/githubPublish.js';
 import { overrideFromSubmission, submissionFromDraft, emptyDraft } from '../assets/js/lib/submissions.js';
 
@@ -132,6 +134,32 @@ describe('mergeLibraryEntry', () => {
   });
 });
 
+describe('removeLibraryEntry', () => {
+  const CURRENT = JSON.stringify({
+    _comment: ['Hand-curated metadata for files in /apps.'],
+    'apps/16G.pdf': { title: 'Existing', subject: 'Mathematics' },
+    'apps/other.pdf': { title: 'Other' }
+  }, null, 2);
+
+  it('removes the entry and preserves the rest', () => {
+    const result = removeLibraryEntry(CURRENT, 'apps/16G.pdf');
+    const data = JSON.parse(result);
+    expect(Object.keys(data)).toEqual(['_comment', 'apps/other.pdf']);
+  });
+
+  it('returns null when the file is empty (nothing to change)', () => {
+    expect(removeLibraryEntry('', 'apps/16G.pdf')).toBeNull();
+  });
+
+  it('returns null when the key is not present', () => {
+    expect(removeLibraryEntry(CURRENT, 'apps/missing.pdf')).toBeNull();
+  });
+
+  it('refuses to touch a broken library.json', () => {
+    expect(() => removeLibraryEntry('{ not json', 'apps/16G.pdf')).toThrow(GithubPublishError);
+  });
+});
+
 // --- Client ------------------------------------------------------------------------
 
 describe('createGithubPublisher', () => {
@@ -178,6 +206,26 @@ describe('createGithubPublisher', () => {
     const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fetchImpl });
     expect(await publisher.getFile('library.json')).toEqual({ exists: true, sha: 'abc', text: '{"a":1}' });
     expect(await publisher.getFile('missing.txt')).toEqual({ exists: false, sha: '', text: '' });
+  });
+
+  it('deleteFile() sends the blob sha and reports the commit', async () => {
+    const fetchImpl = fakeFetch([
+      [
+        (url, options) => url.includes('contents/apps/16G.pdf') && options.method === 'DELETE',
+        (url, options) => ({ status: 200, json: { commit: { sha: 'c9', html_url: 'https://github.com/Petgabs/BZFLS/commit/c9' } } })
+      ]
+    ]);
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fetchImpl });
+    const result = await publisher.deleteFile({ path: 'apps/16G.pdf', sha: 'file-sha', message: 'Delete it' });
+    expect(result).toEqual({ commitSha: 'c9', commitUrl: 'https://github.com/Petgabs/BZFLS/commit/c9' });
+
+    const call = fetchImpl.calls.find(c => c.options.method === 'DELETE');
+    expect(JSON.parse(call.options.body)).toMatchObject({ sha: 'file-sha', branch: 'main', message: 'Delete it' });
+  });
+
+  it('deleteFile() refuses to delete without a sha', async () => {
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch([]) });
+    await expect(publisher.deleteFile({ path: 'apps/16G.pdf' })).rejects.toThrow(/SHA/);
   });
 });
 
@@ -316,5 +364,100 @@ describe('publishSubmissionToGithub', () => {
         .rejects.toThrow(/file name/);
     }
     expect(fetchImpl.calls.length).toBe(0);
+  });
+});
+
+// --- Delete pipeline -------------------------------------------------------------------
+
+function deleteRoutes({ fileExists = true, libraryExists = true, libraryHasEntry = true } = {}) {
+  const calls = [];
+  const libraryText = libraryHasEntry
+    ? '{\n  "apps/16G.pdf": { "title": "Existing" },\n  "apps/other.pdf": { "title": "Other" }\n}\n'
+    : '{\n  "apps/other.pdf": { "title": "Other" }\n}\n';
+  const routes = [
+    [
+      (url, options) => url.includes('contents/apps/16G.pdf') && (!options.method || options.method === 'GET'),
+      () => (fileExists
+        ? { status: 200, json: { sha: 'file-sha', encoding: 'base64', content: 'QUJD' } }
+        : { status: 404, json: { message: 'Not Found' } })
+    ],
+    [
+      (url, options) => url.includes('contents/apps/16G.pdf') && options.method === 'DELETE',
+      (url, options) => {
+        calls.push({ url, body: JSON.parse(options.body) });
+        return { status: 200, json: { commit: { sha: 'd1', html_url: 'https://github.com/Petgabs/BZFLS/commit/d1' } } };
+      }
+    ],
+    [
+      (url, options) => url.includes('contents/library.json') && (!options.method || options.method === 'GET'),
+      () => (libraryExists
+        ? { status: 200, json: { sha: 'lib-sha', encoding: 'base64', content: textToBase64(libraryText) } }
+        : { status: 404, json: { message: 'Not Found' } })
+    ],
+    [
+      (url, options) => url.includes('contents/library.json') && options.method === 'PUT',
+      (url, options) => {
+        calls.push({ url, body: JSON.parse(options.body) });
+        return { status: 200, json: { commit: { sha: 'd2', html_url: 'https://github.com/Petgabs/BZFLS/commit/d2' } } };
+      }
+    ]
+  ];
+  return { routes, calls };
+}
+
+describe('deleteFileFromGithub', () => {
+  it('deletes the file and removes its library.json entry', async () => {
+    const { routes, calls } = deleteRoutes();
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch(routes) });
+
+    const result = await deleteFileFromGithub(publisher, { path: 'apps/16G.pdf' });
+
+    expect(result.existed).toBe(true);
+    expect(result.fileCommitUrl).toContain('/commit/d1');
+    expect(result.libraryCommitUrl).toContain('/commit/d2');
+    expect(result.commitUrl).toContain('/commit/d2');
+
+    const deleteCall = calls.find(c => c.url.includes('apps/16G.pdf'));
+    expect(deleteCall.body.sha).toBe('file-sha');
+
+    const libraryCall = calls.find(c => c.url.includes('library.json'));
+    const merged = JSON.parse(base64ToText(libraryCall.body.content));
+    expect(Object.keys(merged)).toEqual(['apps/other.pdf']);
+  });
+
+  it('is a no-op on the file when it is already gone, but still returns cleanly', async () => {
+    const { routes, calls } = deleteRoutes({ fileExists: false });
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch(routes) });
+
+    const result = await deleteFileFromGithub(publisher, { path: 'apps/16G.pdf' });
+
+    expect(result.existed).toBe(false);
+    expect(result.fileCommitUrl).toBe('');
+    expect(calls.find(c => c.url.includes('apps/16G.pdf'))).toBeUndefined();
+  });
+
+  it('skips the library.json commit when the path has no entry there', async () => {
+    const { routes, calls } = deleteRoutes({ libraryHasEntry: false });
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch(routes) });
+
+    const result = await deleteFileFromGithub(publisher, { path: 'apps/16G.pdf' });
+
+    expect(result.fileCommitUrl).toContain('/commit/d1');
+    expect(result.libraryCommitUrl).toBe('');
+    expect(calls.find(c => c.url.includes('library.json'))).toBeUndefined();
+  });
+
+  it('skips the library.json commit entirely when library.json does not exist', async () => {
+    const { routes, calls } = deleteRoutes({ libraryExists: false });
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch(routes) });
+
+    await deleteFileFromGithub(publisher, { path: 'apps/16G.pdf' });
+
+    expect(calls.find(c => c.url.includes('library.json'))).toBeUndefined();
+  });
+
+  it('requires a path', async () => {
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch([]) });
+    await expect(deleteFileFromGithub(publisher, {})).rejects.toThrow(/path/);
   });
 });

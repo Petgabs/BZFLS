@@ -41,8 +41,37 @@ file name is kept as secondary, searchable text.
 | Dashboard, settings, repository sync | ✖ | ✔ |
 
 Both accounts are gated client-side (salted SHA-256 digests, no plaintext
-password in the repository). Real deletion still requires the administrator's
-GitHub sign-in — the teacher role has no destructive action at all.
+password in the repository). The teacher role has no destructive action at
+all — deletion is always an administrator action.
+
+### Deleting files (library cards, dashboard tables, submissions)
+
+Every file the administrator can see — browser-only drafts, approved teacher
+submissions, and anything already published to the public repository — has a
+**Delete** control right next to it: on each library card, in both tables on
+the **Admin Dashboard** (Downloads by Mini App / Documents & Resources), and
+next to each reviewed submission.
+
+* **Browser-only files** are removed immediately from this device.
+* **Files already in the GitHub repository** are deleted for real with one
+  click, in-app, via the Contents API (`assets/js/lib/githubPublish.js`):
+  the file is removed from `apps/` and its entry is dropped from
+  `library.json`, as up to two commits — using the same GitHub Auto-Publish
+  token connected in Settings. No trip to github.com is needed. Without a
+  connected token, the button falls back to opening the manual delete page
+  on github.com instead.
+
+### Auto-publish on approval (one click, straight to GitHub)
+
+With a GitHub Auto-Publish token connected (Settings → GitHub Auto-Publish),
+**Approve & Publish** is a single click: the teacher's submission is approved
+*and* committed straight to the public repository (`apps/` + `library.json`)
+in the same action — it is marked `published` and the temporary local/browser
+copy is dropped, so the repository stays the one canonical copy. Every other
+device picks it up once GitHub Pages redeploys (usually 1–2 minutes).
+Without a connected token, approval still publishes to the library
+immediately on that device, with the manual copy/paste flow offered as the
+fallback to reach every device.
 
 ### Changing the teacher login
 
