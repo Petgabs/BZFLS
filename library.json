@@ -13,5 +13,18 @@
     "the file name: 16G.pdf tells a student far less than a proper title.",
     "Entries produced by the teacher upload workflow can be copied straight",
     "from the Review Submissions screen (\"Copy metadata\")."
-  ]
+  ],
+  "apps/Year_12_Mathematics_Advanced_Topic_MCQ_Practice.html": {
+    "title": "MAD 12 MCQ Practice questions",
+    "description": "Practice",
+    "subject": "",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0"
+  }
 }
