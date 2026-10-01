@@ -20,20 +20,6 @@
     "Entries produced by the teacher upload workflow can be copied straight",
     "from the Review Submissions screen (\"Copy metadata\")."
   ],
-  "apps/Year_12_Mathematics_Advanced_Topic_MCQ_Practice.html": {
-    "title": "MAD 12 MQC Mini apps-by topics",
-    "description": "Download this mini apps and open to your internet browser",
-    "subject": "Mathematics",
-    "years": [
-      12
-    ],
-    "keywords": [],
-    "language": "English",
-    "owner": "Peter",
-    "department": "Mathematics",
-    "version": "1.0",
-    "addedAt": "2026-10-01T12:38:34.903Z"
-  },
   "apps/Teacher Class Schedule.xlsx": {
     "title": "Class schedule",
     "description": "Study",
