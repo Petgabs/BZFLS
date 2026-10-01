@@ -11,8 +11,28 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// The shared teacher password ships as a salted digest, so a test cannot know
+// it — and must not need to: an administrator rotating the school's password
+// should never break the suite. The tests therefore pin a password of their
+// own by swapping the digest in the config module, and read the *username*
+// straight from config so it always matches whatever has shipped.
+const { TEACHER_TEST_PASSWORD } = vi.hoisted(() => ({ TEACHER_TEST_PASSWORD: 'integration-test-password' }));
+
+vi.mock('../assets/js/config.js', async importOriginal => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    TEACHER_PASSWORD_SHA256: createHash('sha256')
+      .update(`${actual.TEACHER_HASH_SALT}::${actual.TEACHER_USERNAME}::${TEACHER_TEST_PASSWORD}`)
+      .digest('hex')
+  };
+});
+
+const { TEACHER_USERNAME } = await import('../assets/js/config.js');
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -302,7 +322,7 @@ describe('teacher upload workflow', () => {
 
   it('rejects the wrong teacher credentials', async () => {
     component.openLogin('teacher');
-    component.loginForm = { username: 'hoc-teacher', password: 'wrong-password' };
+    component.loginForm = { username: TEACHER_USERNAME, password: 'wrong-password' };
     await component.login();
     expect(component.role).toBe('anonymous');
     expect(component.loginError).toBeTruthy();
@@ -311,7 +331,7 @@ describe('teacher upload workflow', () => {
 
   it('signs a teacher in with the shared staff account', async () => {
     component.openLogin('teacher');
-    component.loginForm = { username: 'hoc-teacher', password: 'hsc-bzfls' };
+    component.loginForm = { username: TEACHER_USERNAME, password: TEACHER_TEST_PASSWORD };
     await component.login();
     expect(component.role).toBe('teacher');
     expect(component.isStaff).toBe(true);
@@ -462,7 +482,7 @@ describe('teacher credential rotation (administrator)', () => {
     component.role = 'anonymous';
     component.teacherOverride = null;
     expect(component.teacherOverrideActive).toBe(false);
-    expect(component.effectiveTeacherUsername).toBe('hoc-teacher');
+    expect(component.effectiveTeacherUsername).toBe(TEACHER_USERNAME);
   });
 
   it('rejects a weak or mismatched change without saving anything', async () => {
@@ -483,7 +503,7 @@ describe('teacher credential rotation (administrator)', () => {
     component.role = 'admin';
     component.openTeacherCreds();
     // The form opens prefilled with the current username.
-    expect(component.teacherCreds.username).toBe('hoc-teacher');
+    expect(component.teacherCreds.username).toBe(TEACHER_USERNAME);
 
     component.teacherCreds = { username: 'staff-2027', password: 'Sunshine-Cloud-9', confirm: 'Sunshine-Cloud-9' };
     await component.saveTeacherCredentials();
@@ -494,7 +514,7 @@ describe('teacher credential rotation (administrator)', () => {
 
     // The old shared credentials no longer work on this device.
     component.openLogin('teacher');
-    component.loginForm = { username: 'hoc-teacher', password: 'hsc-bzfls' };
+    component.loginForm = { username: TEACHER_USERNAME, password: TEACHER_TEST_PASSWORD };
     await component.login();
     expect(component.loginError).toBeTruthy();
     expect(component.role).toBe('admin'); // unchanged
@@ -514,12 +534,12 @@ describe('teacher credential rotation (administrator)', () => {
     component.resetTeacherCredentials();
 
     expect(component.teacherOverrideActive).toBe(false);
-    expect(component.effectiveTeacherUsername).toBe('hoc-teacher');
+    expect(component.effectiveTeacherUsername).toBe(TEACHER_USERNAME);
     expect(localStorage.getItem('schoolcloud_teacher_override')).toBeNull();
 
     // The original shared credentials work again.
     component.openLogin('teacher');
-    component.loginForm = { username: 'hoc-teacher', password: 'hsc-bzfls' };
+    component.loginForm = { username: TEACHER_USERNAME, password: TEACHER_TEST_PASSWORD };
     await component.login();
     expect(component.role).toBe('teacher');
     expect(component.loginError).toBe('');
@@ -556,7 +576,7 @@ describe('teacher credential rotation (administrator)', () => {
     component.resetTeacherCredentials();
     component.logout();
     expect(component.teacherOverrideActive).toBe(false);
-    expect(component.effectiveTeacherUsername).toBe('hoc-teacher');
+    expect(component.effectiveTeacherUsername).toBe(TEACHER_USERNAME);
   });
 });
 
@@ -663,7 +683,7 @@ describe('administrator cloud file deletion and dashboard features', () => {
 describe('shared cloud publishing token', () => {
   const CLOUD_PATH = 'assets/data/cloud-token.json';
   const PASTED_TOKEN = 'github_pat_11CLOUD000examplevalue_ZZ9';
-  const TEACHER_PASSWORD = 'hoc-teacher-2026';
+  const TEACHER_PASSWORD = 'vault-key-password-2026'; // set by the test, not the shipped one
 
   /** Stands in for the file in the repository. */
   let repoVaultText;
@@ -738,7 +758,7 @@ describe('shared cloud publishing token', () => {
 
     // Known teacher password on this device, so the vault has a key.
     component.role = 'admin';
-    component.teacherCreds = { username: 'hoc-teacher', password: TEACHER_PASSWORD, confirm: TEACHER_PASSWORD };
+    component.teacherCreds = { username: TEACHER_USERNAME, password: TEACHER_PASSWORD, confirm: TEACHER_PASSWORD };
     await component.saveTeacherCredentials();
 
     component.disconnectGithub();
@@ -814,7 +834,7 @@ describe('shared cloud publishing token', () => {
     expect(component.githubAuth.connected).toBe(false);
 
     component.loginMode = 'teacher';
-    component.loginForm = { username: 'hoc-teacher', password: TEACHER_PASSWORD };
+    component.loginForm = { username: TEACHER_USERNAME, password: TEACHER_PASSWORD };
     await component.login();
 
     // Unlocking runs in the background so a slow network cannot block the
@@ -901,7 +921,7 @@ describe('shared cloud publishing token', () => {
 
     const rotated = 'staffroom-rotated-2027';
     component.role = 'admin';
-    component.teacherCreds = { username: 'hoc-teacher', password: rotated, confirm: rotated };
+    component.teacherCreds = { username: TEACHER_USERNAME, password: rotated, confirm: rotated };
     await component.saveTeacherCredentials();
 
     expect(repoVaultText).not.toBe(before);
