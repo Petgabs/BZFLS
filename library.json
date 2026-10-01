@@ -85,5 +85,19 @@
     "department": "Mathematics",
     "version": "1.0",
     "addedAt": "2026-10-01T12:43:51.509Z"
+  },
+  "apps/Year_12_Mathematics_Advanced_MCQ_Revision (2).html": {
+    "title": "MAD 12 MCQ Revision -Mini app",
+    "description": "Download this mini app and open to your internet browser",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0",
+    "addedAt": "2026-10-01T12:47:00.279Z"
   }
 }
