@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// BZFLS-SchoolCloud — Alpine component.
+// School Cloud System (powered by Petgabs) — Alpine component.
 //
 // Phase 1: search + facets, structured metadata, previews, local vendor
 // bundles, explicit loading/error/offline states, and counters backed by a

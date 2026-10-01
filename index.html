@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BZFLS-SchoolCloud - Offline Library</title>
-    <meta name="description" content="Browse, preview and download classroom mini apps, documents and resources by subject and year group.">
+    <title>School Cloud System — Classroom Library</title>
+    <meta name="description" content="School Cloud System — browse, preview and download classroom mini apps, documents and resources by subject and year group.">
     <meta name="theme-color" content="#4f46e5">
 
     <!-- Locally bundled styles and scripts: no third-party CDN is required,
@@ -32,11 +32,19 @@
     <!-- Header -->
     <header class="bg-white border-b sticky top-0 z-20">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center gap-4">
-            <button type="button" class="flex items-center gap-2 focus-ring rounded-lg" @click="currentView = 'library'">
-                <div class="bg-indigo-600 p-2 rounded-lg text-white">
-                    <i data-lucide="file-code" aria-hidden="true"></i>
+            <button type="button" class="flex items-center gap-3 focus-ring rounded-xl group" @click="currentView = 'library'">
+                <div class="bg-gradient-to-br from-indigo-500 via-indigo-600 to-violet-600 p-2 sm:p-2.5 rounded-xl text-white shadow-md shadow-indigo-200/70 group-hover:shadow-lg group-hover:shadow-indigo-300/70 transition-all">
+                    <i data-lucide="cloud" class="w-5 h-5" aria-hidden="true"></i>
                 </div>
-                <h1 class="text-xl font-bold tracking-tight">BZFLS-SchoolCloud <span class="text-xs font-normal text-slate-400 ml-1">v1.3</span></h1>
+                <div class="flex flex-col items-start text-left leading-tight">
+                    <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-900">
+                        School Cloud <span class="text-indigo-600">System</span>
+                        <span class="ml-1.5 align-middle text-[10px] font-semibold text-slate-500 bg-slate-100 ring-1 ring-slate-200 rounded px-1.5 py-0.5">v1.3</span>
+                    </h1>
+                    <p class="text-[11px] font-medium text-slate-500 tracking-wide mt-0.5">
+                        powered by <span class="font-semibold text-slate-700">Petgabs</span>
+                    </p>
+                </div>
             </button>
 
             <div class="flex items-center gap-3 sm:gap-4">

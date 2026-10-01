@@ -1,8 +1,8 @@
 {
-  "name": "bzfls-schoolcloud",
+  "name": "school-cloud-system",
   "version": "1.3.0",
   "private": true,
-  "description": "BZFLS-SchoolCloud public library — Phase 1",
+  "description": "School Cloud System (powered by Petgabs) — public library of classroom resources",
   "type": "module",
   "scripts": {
     "build:css": "tailwindcss -i assets/css/tailwind.src.css -o assets/css/app.css --minify",
