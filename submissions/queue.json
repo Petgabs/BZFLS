@@ -1,7 +1,7 @@
 [
   {
     "id": "a2453979-0b97-4495-a8e7-fa381f3343e2",
-    "path": "submissions/pending/a2453979-0b97-4495-a8e7-fa381f3343e2__Paper 2- Practice questions.docx",
+    "path": "",
     "fileName": "Paper 2- Practice questions.docx",
     "size": 3972887,
     "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -25,13 +25,13 @@
     "accessibility": "",
     "submittedBy": "teacher",
     "submittedAt": "2026-10-01T11:46:14.101Z",
-    "status": "pending",
-    "reviewedAt": "",
-    "reviewedBy": "",
+    "status": "approved",
+    "reviewedAt": "2026-10-01T11:47:51.664Z",
+    "reviewedBy": "administrator",
     "reviewNote": "",
-    "published": false,
-    "publishedPath": "",
-    "commitUrl": ""
+    "published": true,
+    "publishedPath": "apps/Paper 2- Practice questions.docx",
+    "commitUrl": "https://github.com/Petgabs/BZFLS/commit/7527445e21602eb786ce3761c54846504990bd22"
   },
   {
     "id": "7b679285-4f8f-4607-b9a0-d856a0fa7e2c",
