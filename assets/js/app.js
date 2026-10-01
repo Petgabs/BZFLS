@@ -12,7 +12,6 @@
 
 import {
   DEFAULT_GITHUB_REPO,
-
   MAX_UPLOAD_BYTES,
   MAX_INLINE_UPLOAD_BYTES,
   SUPPORTED_FILE_PATTERN,
@@ -27,6 +26,7 @@ import {
   TEACHER_HASH_SALT,
   TEACHER_PASSWORD_SHA256,
   TEACHER_SESSION_KEY,
+  TEACHER_OVERRIDE_KEY,
   REQUIRE_TEACHER_APPROVAL,
   APPS_STORAGE_KEY,
   SUBMISSIONS_STORAGE_KEY,
@@ -75,6 +75,11 @@ import {
 } from './lib/format.js';
 
 import { canPreview, previewDescriptor } from './lib/preview.js';
+
+import {
+  validateTeacherCredentials,
+  teacherConfigSnippet
+} from './lib/credentials.js';
 
 import {
   emptyDraft,
@@ -180,6 +185,16 @@ export function schoolCloud() {
     // --- Submissions -----------------------------------------------------------
     submissions: [],
 
+    // --- Teacher access (administrator) ---------------------------------------
+    // A device-local override of the shared teacher login, set from Settings.
+    // Stores only the username and salted SHA-256 digest — never a password.
+    teacherOverride: null,
+    teacherCredsOpen: false,
+    teacherCreds: { username: '', password: '', confirm: '' },
+    teacherCredsErrors: {},
+    savingTeacherCreds: false,
+    showTeacherPassword: false,
+
     // --- Stats --------------------------------------------------------------
     stats: {
       visitors: 0,
@@ -220,6 +235,19 @@ export function schoolCloud() {
 
     get reviewedSubmissions() {
       return this.submissions.filter(record => record.status !== 'pending');
+    },
+
+    /** The teacher login in force on this device (override or repository). */
+    get effectiveTeacherUsername() {
+      return this.teacherOverride?.username || TEACHER_USERNAME;
+    },
+
+    get effectiveTeacherDigest() {
+      return this.teacherOverride?.digest || TEACHER_PASSWORD_SHA256;
+    },
+
+    get teacherOverrideActive() {
+      return Boolean(this.teacherOverride);
     },
 
     get filteredApps() {
@@ -298,9 +326,13 @@ export function schoolCloud() {
       });
       globalThis.addEventListener?.('offline', () => { this.offline = true; });
 
+      // Must run before the session check: a rotated teacher login replaces
+      // the repository credentials on this device.
+      this.loadTeacherOverride();
+
       try {
         if (sessionStorage.getItem(ADMIN_SESSION_KEY) === ADMIN_PASSWORD_SHA256) this.role = 'admin';
-        else if (sessionStorage.getItem(TEACHER_SESSION_KEY) === TEACHER_PASSWORD_SHA256) this.role = 'teacher';
+        else if (sessionStorage.getItem(TEACHER_SESSION_KEY) === this.effectiveTeacherDigest) this.role = 'teacher';
       } catch (error) {
         console.warn('Session storage unavailable; staff must sign in each visit.', error);
       }
@@ -1208,26 +1240,7 @@ export function schoolCloud() {
     /** Copy a ready-to-paste library.json entry for publishing a submission. */
     async copySubmissionMetadata(record) {
       const snippet = libraryJsonEntry(record);
-      let copied = false;
-      try {
-        await navigator.clipboard.writeText(snippet);
-        copied = true;
-      } catch {
-        // Clipboard API unavailable (e.g. non-secure context): select trick.
-        try {
-          const helper = document.createElement('textarea');
-          helper.value = snippet;
-          helper.setAttribute('readonly', '');
-          helper.style.position = 'fixed';
-          helper.style.opacity = '0';
-          document.body.appendChild(helper);
-          helper.select();
-          copied = document.execCommand('copy');
-          document.body.removeChild(helper);
-        } catch {
-          copied = false;
-        }
-      }
+      const copied = await this.copyToClipboard(snippet);
       if (copied) {
         alert('Metadata copied to the clipboard.\n\n1. Upload the file to the apps folder on GitHub.\n2. Paste this entry into library.json and commit.\nThe resource then appears with its full details on every device.');
       } else {
@@ -1377,14 +1390,17 @@ export function schoolCloud() {
             console.warn('Could not persist the administrator session.', error);
           }
         } else {
+          // The effective credentials come from the administrator's override
+          // (Settings → Teacher Access) when one is set on this device,
+          // otherwise from the repository defaults in config.js.
           const digest = await sha256Hex(`${TEACHER_HASH_SALT}::${username}::${password}`);
-          if (username !== TEACHER_USERNAME || !digestsMatch(digest, TEACHER_PASSWORD_SHA256)) {
+          if (username !== this.effectiveTeacherUsername || !digestsMatch(digest, this.effectiveTeacherDigest)) {
             this.loginError = 'Incorrect teacher username or password.';
             return;
           }
           this.adoptRole('teacher');
           try {
-            sessionStorage.setItem(TEACHER_SESSION_KEY, TEACHER_PASSWORD_SHA256);
+            sessionStorage.setItem(TEACHER_SESSION_KEY, this.effectiveTeacherDigest);
             sessionStorage.removeItem(ADMIN_SESSION_KEY);
           } catch (error) {
             console.warn('Could not persist the teacher session.', error);
@@ -1419,6 +1435,142 @@ export function schoolCloud() {
       if (this.isStaff) return true;
       this.openLogin('teacher');
       return false;
+    },
+
+    // --- Teacher access (administrator) ---------------------------------------
+    //
+    // The shared teacher login can be rotated from Settings. The override
+    // applies immediately on this device; publishing the generated config
+    // lines to GitHub applies it to every device after the next deploy.
+
+    loadTeacherOverride() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(TEACHER_OVERRIDE_KEY) || 'null');
+        this.teacherOverride = saved && typeof saved === 'object' && saved.username && saved.digest
+          ? saved
+          : null;
+      } catch {
+        this.teacherOverride = null;
+      }
+    },
+
+    openTeacherCreds() {
+      if (!this.requireAdmin()) return;
+      this.teacherCredsOpen = true;
+      this.teacherCredsErrors = {};
+      // Prefill the current username so a password-only change is easy.
+      this.teacherCreds = { username: this.effectiveTeacherUsername, password: '', confirm: '' };
+      this.$nextTick(() => {
+        refreshIcons();
+        document.getElementById('teacher-new-user')?.focus();
+      });
+    },
+
+    cancelTeacherCreds() {
+      this.teacherCredsOpen = false;
+      this.teacherCreds = { username: '', password: '', confirm: '' };
+      this.teacherCredsErrors = {};
+      this.showTeacherPassword = false;
+      this.$nextTick(() => refreshIcons());
+    },
+
+    toggleTeacherPassword() {
+      this.showTeacherPassword = !this.showTeacherPassword;
+      this.$nextTick(() => refreshIcons());
+    },
+
+    async saveTeacherCredentials() {
+      if (!this.requireAdmin()) return;
+
+      this.teacherCredsErrors = validateTeacherCredentials(this.teacherCreds);
+      if (Object.values(this.teacherCredsErrors).some(Boolean)) return;
+
+      this.savingTeacherCreds = true;
+      try {
+        const username = this.teacherCreds.username.trim();
+        // Same scheme as config.js: salted SHA-256, never plaintext.
+        const digest = await sha256Hex(`${TEACHER_HASH_SALT}::${username}::${this.teacherCreds.password}`);
+
+        const override = {
+          username,
+          digest,
+          changedAt: new Date().toISOString(),
+          changedBy: 'administrator'
+        };
+        localStorage.setItem(TEACHER_OVERRIDE_KEY, JSON.stringify(override));
+        this.teacherOverride = override;
+      } catch (error) {
+        console.warn('Could not save the teacher credential override.', error);
+        alert('The change could not be saved in this browser.');
+        return;
+      } finally {
+        this.savingTeacherCreds = false;
+      }
+
+      // A teacher session on this device was signed in under the old
+      // credentials — sign it out so the new login takes effect.
+      try { sessionStorage.removeItem(TEACHER_SESSION_KEY); } catch { /* optional */ }
+
+      this.cancelTeacherCreds();
+      alert(`Teacher login updated on this device.\n\nUsername: ${this.effectiveTeacherUsername}\n\nThis applies to this browser only. To give every teacher the new login, copy the config lines below and paste them into assets/js/config.js on GitHub, then commit — the change applies site-wide once the site redeploys.`);
+      this.$nextTick(() => refreshIcons());
+    },
+
+    resetTeacherCredentials() {
+      if (!this.requireAdmin()) return;
+      if (!this.teacherOverride) return;
+      if (!confirm('Restore the repository teacher username and password on this device? Teachers will sign in with the credentials published in assets/js/config.js again.')) return;
+
+      localStorage.removeItem(TEACHER_OVERRIDE_KEY);
+      this.teacherOverride = null;
+      this.cancelTeacherCreds();
+      try { sessionStorage.removeItem(TEACHER_SESSION_KEY); } catch { /* optional */ }
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /** The exact lines to paste into assets/js/config.js. */
+    teacherConfigText() {
+      return teacherConfigSnippet(this.effectiveTeacherUsername, this.effectiveTeacherDigest);
+    },
+
+    async copyTeacherConfig() {
+      if (!this.requireAdmin()) return;
+      const copied = await this.copyToClipboard(this.teacherConfigText());
+      if (copied) {
+        alert('Config lines copied to the clipboard.\n\n1. Open assets/js/config.js on GitHub (link beside this button).\n2. Replace the TEACHER_USERNAME and TEACHER_PASSWORD_SHA256 lines with the copied ones.\n3. Commit — once the site redeploys, the new teacher login works on every device.');
+      } else {
+        alert('Automatic copy is blocked in this browser. Copy the lines from the dialog that follows.');
+        prompt('assets/js/config.js — teacher credentials:', this.teacherConfigText());
+      }
+    },
+
+    githubEditConfigUrl() {
+      const repo = this.normalizeRepository(this.githubConfig.repo) || DEFAULT_GITHUB_REPO;
+      const safeRepo = repo.split('/').map(encodeURIComponent).join('/');
+      return `https://github.com/${safeRepo}/edit/main/assets/js/config.js`;
+    },
+
+    /** Clipboard with a fallback for browsers without the async API. */
+    async copyToClipboard(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        try {
+          const helper = document.createElement('textarea');
+          helper.value = text;
+          helper.setAttribute('readonly', '');
+          helper.style.position = 'fixed';
+          helper.style.opacity = '0';
+          document.body.appendChild(helper);
+          helper.select();
+          const copied = document.execCommand('copy');
+          document.body.removeChild(helper);
+          return copied;
+        } catch {
+          return false;
+        }
+      }
     },
 
     // Deletion happens on github.com itself, so GitHub performs the

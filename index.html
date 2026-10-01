@@ -1211,6 +1211,109 @@
                         </a>
                     </div>
 
+                    <!-- Teacher access (administrator) -->
+                    <section class="pt-6 border-t" aria-labelledby="teacher-access-heading">
+                        <h3 id="teacher-access-heading" class="text-sm font-bold text-slate-900 flex items-center gap-2 mb-1">
+                            <i data-lucide="key-round" class="w-4 h-4" aria-hidden="true"></i> Teacher Access
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-4">
+                            The shared staff account teachers sign in with to upload resources. Only the administrator can change it — teachers never see this screen.
+                        </p>
+
+                        <!-- Current credentials -->
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <p class="text-xs text-slate-500">Current username</p>
+                                    <p class="font-mono font-semibold text-slate-800 mt-0.5" x-text="effectiveTeacherUsername"></p>
+                                </div>
+                                <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full ring-1"
+                                      :class="teacherOverrideActive ? 'bg-amber-50 text-amber-700 ring-amber-200' : 'bg-emerald-50 text-emerald-700 ring-emerald-200'">
+                                    <i :data-lucide="teacherOverrideActive ? 'pencil' : 'shield-check'" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    <span x-text="teacherOverrideActive ? 'Changed on this device' : 'Repository default'"></span>
+                                </span>
+                            </div>
+                            <p x-show="teacherOverrideActive" class="text-xs text-amber-700 mt-3 leading-relaxed">
+                                This change applies to <strong>this browser only</strong> — the old login no longer works here, but other devices still use the published credentials. Use the publish buttons below to roll it out to every teacher.
+                            </p>
+                            <p class="text-[11px] text-slate-400 mt-3 leading-relaxed">
+                                Passwords are stored only as salted SHA-256 digests — never in plaintext, not even here.
+                            </p>
+                        </div>
+
+                        <!-- Change button -->
+                        <button type="button" x-show="!teacherCredsOpen" @click="openTeacherCreds()"
+                                class="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-2.5 rounded-lg font-bold hover:bg-slate-800 transition-colors focus-ring">
+                            <i data-lucide="key-round" class="w-4 h-4" aria-hidden="true"></i>
+                            Change Teacher Login
+                        </button>
+
+                        <!-- Change form -->
+                        <form x-show="teacherCredsOpen" x-cloak @submit.prevent="saveTeacherCredentials()" class="space-y-4 bg-white border border-slate-200 rounded-lg p-4" novalidate>
+                            <div>
+                                <label for="teacher-new-user" class="block text-xs font-medium text-slate-500 mb-1">New username</label>
+                                <input id="teacher-new-user" type="text" x-model="teacherCreds.username" autocomplete="off" spellcheck="false"
+                                       class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                                       :class="teacherCredsErrors.username ? 'border-red-300' : 'border-slate-200'">
+                                <p x-show="teacherCredsErrors.username" x-text="teacherCredsErrors.username" class="text-sm text-red-600 mt-1" role="alert"></p>
+                            </div>
+                            <div>
+                                <label for="teacher-new-pass" class="block text-xs font-medium text-slate-500 mb-1">New password</label>
+                                <div class="relative">
+                                    <input id="teacher-new-pass" :type="showTeacherPassword ? 'text' : 'password'" x-model="teacherCreds.password"
+                                           autocomplete="new-password" aria-describedby="teacher-pass-hint"
+                                           class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none pr-10"
+                                           :class="teacherCredsErrors.password ? 'border-red-300' : 'border-slate-200'">
+                                    <button type="button" @click="toggleTeacherPassword()"
+                                            :aria-label="showTeacherPassword ? 'Hide the new password' : 'Show the new password'"
+                                            class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700 rounded-md focus-ring">
+                                        <i :data-lucide="showTeacherPassword ? 'eye-off' : 'eye'" class="w-4 h-4" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <p id="teacher-pass-hint" class="text-xs text-slate-400 mt-1">At least 8 characters. Teachers share this account, so make it strong.</p>
+                                <p x-show="teacherCredsErrors.password" x-text="teacherCredsErrors.password" class="text-sm text-red-600 mt-1" role="alert"></p>
+                            </div>
+                            <div>
+                                <label for="teacher-new-pass-confirm" class="block text-xs font-medium text-slate-500 mb-1">Confirm new password</label>
+                                <input id="teacher-new-pass-confirm" :type="showTeacherPassword ? 'text' : 'password'" x-model="teacherCreds.confirm" autocomplete="new-password"
+                                       class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                       :class="teacherCredsErrors.confirm ? 'border-red-300' : 'border-slate-200'">
+                                <p x-show="teacherCredsErrors.confirm" x-text="teacherCredsErrors.confirm" class="text-sm text-red-600 mt-1" role="alert"></p>
+                            </div>
+                            <div class="flex gap-2 pt-1">
+                                <button type="button" @click="cancelTeacherCreds()"
+                                        class="flex-1 border border-slate-300 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-50 focus-ring">Cancel</button>
+                                <button type="submit" :disabled="savingTeacherCreds"
+                                        class="flex-1 inline-flex items-center justify-center gap-2 bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 focus-ring">
+                                    <i data-lucide="check" class="w-4 h-4" aria-hidden="true"></i>
+                                    <span x-text="savingTeacherCreds ? 'Saving…' : 'Update on this device'"></span>
+                                </button>
+                            </div>
+                            <p class="text-[11px] text-slate-400 leading-relaxed border-t border-slate-100 pt-3">
+                                Applies immediately in this browser. To roll the new login out to every teacher, publish it with the buttons below after saving.
+                            </p>
+                        </form>
+
+                        <!-- Publish site-wide -->
+                        <div class="flex flex-col gap-2 mt-4">
+                            <button type="button" @click="copyTeacherConfig()"
+                                    class="inline-flex items-center gap-2 bg-slate-900 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-slate-800 transition-colors focus-ring">
+                                <i data-lucide="clipboard-copy" class="w-4 h-4" aria-hidden="true"></i>
+                                Copy config lines for GitHub
+                            </button>
+                            <a :href="githubEditConfigUrl()" target="_blank" rel="noopener noreferrer"
+                               class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-slate-50 transition-colors focus-ring">
+                                <i data-lucide="github" class="w-4 h-4" aria-hidden="true"></i> Edit assets/js/config.js on GitHub
+                                <i data-lucide="external-link" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                            </a>
+                            <button type="button" x-show="teacherOverrideActive" @click="resetTeacherCredentials()"
+                                    class="inline-flex items-center gap-2 text-amber-700 text-sm font-medium hover:bg-amber-50 p-2 rounded-lg transition-colors focus-ring">
+                                <i data-lucide="rotate-ccw" class="w-4 h-4" aria-hidden="true"></i>
+                                Restore repository default on this device
+                            </button>
+                        </div>
+                    </section>
+
                     <div class="pt-4 border-t">
                         <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2 mb-1">
                             <i data-lucide="hard-drive" class="w-4 h-4" aria-hidden="true"></i> Local Cleanup

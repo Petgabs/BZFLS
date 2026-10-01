@@ -44,6 +44,26 @@ Both accounts are gated client-side (salted SHA-256 digests, no plaintext
 password in the repository). Real deletion still requires the administrator's
 GitHub sign-in — the teacher role has no destructive action at all.
 
+### Changing the teacher login
+
+The administrator rotates the shared teacher username and password in
+**Settings → Teacher Access** (admins only; teachers never see that screen):
+
+1. Enter a new username and password (confirmed twice, minimum 8 characters,
+   validated by `assets/js/lib/credentials.js`). Only a salted SHA-256 digest
+   is ever stored — never the plaintext password.
+2. **Update on this device** applies the change immediately in that browser:
+   the old login stops working there, the new one works straight away.
+3. To roll it out to **every** teacher, use **Copy config lines for GitHub**
+   (or the *Edit assets/js/config.js on GitHub* link), replace the
+   `TEACHER_USERNAME` / `TEACHER_PASSWORD_SHA256` lines, and commit. After the
+   next deploy the new login works everywhere; the device override keeps
+   matching, so nothing breaks.
+
+Until step 3, other devices continue to use the credentials published in
+`config.js`. **Restore repository default on this device** reverts the local
+override at any time.
+
 ### Where the data lives (static-site limits)
 
 This is a GitHub Pages site, so there is no server-side account or database:

@@ -75,5 +75,8 @@ export const REQUIRE_TEACHER_APPROVAL = true;
 export const APPS_STORAGE_KEY = 'schoolcloud_apps';
 export const SUBMISSIONS_STORAGE_KEY = 'schoolcloud_submissions';
 export const UPLOAD_PREFS_KEY = 'schoolcloud_upload_prefs';
+// Administrator's device-local override of the teacher login (username +
+// salted digest only, never the plaintext password). See lib/credentials.js.
+export const TEACHER_OVERRIDE_KEY = 'schoolcloud_teacher_override';
 export const GITHUB_CONFIG_KEY = 'schoolcloud_github_config';
 export const LIBRARY_CACHE_KEY = 'schoolcloud_library_cache';

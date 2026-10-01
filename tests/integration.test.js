@@ -437,3 +437,120 @@ describe('teacher upload workflow', () => {
     expect(component.currentView).toBe('library');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Teacher login rotation: the administrator changes the shared staff username
+// and password in Settings → Teacher Access.
+// ---------------------------------------------------------------------------
+
+describe('teacher credential rotation (administrator)', () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'confirm').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('starts from the repository default', () => {
+    component.role = 'anonymous';
+    component.teacherOverride = null;
+    expect(component.teacherOverrideActive).toBe(false);
+    expect(component.effectiveTeacherUsername).toBe('hoc-teacher');
+  });
+
+  it('rejects a weak or mismatched change without saving anything', async () => {
+    component.role = 'admin';
+    component.openTeacherCreds();
+    component.teacherCreds = { username: 'ab', password: 'short', confirm: 'nope' };
+    await component.saveTeacherCredentials();
+
+    expect(component.teacherCredsErrors.username).toBeTruthy();
+    expect(component.teacherCredsErrors.password).toBeTruthy();
+    expect(component.teacherCredsErrors.confirm).toBeTruthy();
+    expect(component.teacherOverrideActive).toBe(false);
+    expect(localStorage.getItem('schoolcloud_teacher_override')).toBeNull();
+    component.cancelTeacherCreds();
+  });
+
+  it('changes the teacher login on this device and blocks the old one', async () => {
+    component.role = 'admin';
+    component.openTeacherCreds();
+    // The form opens prefilled with the current username.
+    expect(component.teacherCreds.username).toBe('hoc-teacher');
+
+    component.teacherCreds = { username: 'staff-2027', password: 'Sunshine-Cloud-9', confirm: 'Sunshine-Cloud-9' };
+    await component.saveTeacherCredentials();
+
+    expect(component.teacherOverrideActive).toBe(true);
+    expect(component.effectiveTeacherUsername).toBe('staff-2027');
+    expect(component.teacherConfigText()).toContain("'staff-2027'");
+
+    // The old shared credentials no longer work on this device.
+    component.openLogin('teacher');
+    component.loginForm = { username: 'hoc-teacher', password: 'hsc-bzfls' };
+    await component.login();
+    expect(component.loginError).toBeTruthy();
+    expect(component.role).toBe('admin'); // unchanged
+    component.showLogin = false;
+
+    // The new credentials sign in as a teacher.
+    component.openLogin('teacher');
+    component.loginForm = { username: 'staff-2027', password: 'Sunshine-Cloud-9' };
+    await component.login();
+    expect(component.loginError).toBe('');
+    expect(component.role).toBe('teacher');
+    component.logout();
+  });
+
+  it('restores the repository default when reset', async () => {
+    component.role = 'admin';
+    component.resetTeacherCredentials();
+
+    expect(component.teacherOverrideActive).toBe(false);
+    expect(component.effectiveTeacherUsername).toBe('hoc-teacher');
+    expect(localStorage.getItem('schoolcloud_teacher_override')).toBeNull();
+
+    // The original shared credentials work again.
+    component.openLogin('teacher');
+    component.loginForm = { username: 'hoc-teacher', password: 'hsc-bzfls' };
+    await component.login();
+    expect(component.role).toBe('teacher');
+    expect(component.loginError).toBe('');
+    component.logout();
+    component.role = 'anonymous';
+  });
+
+  it('keeps a teacher session valid across a reload while an override is set', async () => {
+    // Rotate, sign in as a teacher, then simulate a reload: init() must
+    // restore the session using the override digest, not the repository one.
+    component.role = 'admin';
+    component.openTeacherCreds();
+    component.teacherCreds = { username: 'staff-2027', password: 'Sunshine-Cloud-9', confirm: 'Sunshine-Cloud-9' };
+    await component.saveTeacherCredentials();
+
+    component.openLogin('teacher');
+    component.loginForm = { username: 'staff-2027', password: 'Sunshine-Cloud-9' };
+    await component.login();
+    expect(component.role).toBe('teacher');
+
+    component.loadTeacherOverride();
+    component.role = 'anonymous';
+    // The same check init() performs when the page loads.
+    expect(sessionStorage.getItem('schoolcloud_teacher_session')).toBe(component.effectiveTeacherDigest);
+
+    // Only the administrator can reset the credentials: as a teacher the
+    // call must be refused (and demand the admin login) without any change.
+    component.resetTeacherCredentials();
+    expect(component.teacherOverrideActive).toBe(true);
+    expect(component.showLogin).toBe(true);
+    component.showLogin = false;
+
+    component.role = 'admin';
+    component.resetTeacherCredentials();
+    component.logout();
+    expect(component.teacherOverrideActive).toBe(false);
+    expect(component.effectiveTeacherUsername).toBe('hoc-teacher');
+  });
+});
