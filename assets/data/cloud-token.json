@@ -1,0 +1,14 @@
+{
+  "_comment": "School Cloud System — encrypted GitHub publishing token. This file contains AES-GCM ciphertext, never the token itself. It can only be unlocked with the shared teacher password, and is managed from Settings → GitHub Auto-Publish. Do not edit it by hand.",
+  "version": 1,
+  "cipher": "AES-GCM-256",
+  "kdf": "PBKDF2-SHA256",
+  "iterations": 310000,
+  "salt": "ohASz+91XyswIjeP8z45nQ==",
+  "iv": "gwX7wwP8quETnPZ/",
+  "ciphertext": "qp431/0GPbA3Eai9innkWD68aFQuNSHaMzJGg5vpKdA48wazYYvUXU1Fdemo1vP+/5OMLzLdbp0=",
+  "fingerprint": "37ed0690a825",
+  "unlockedBy": "teacher-password",
+  "savedAt": "2026-10-01T06:49:28.604Z",
+  "savedBy": "Petgabs"
+}
