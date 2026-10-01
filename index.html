@@ -32,14 +32,15 @@
     <!-- Header -->
     <header class="bg-white border-b sticky top-0 z-20">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center gap-4">
-            <button type="button" class="flex items-center gap-3 focus-ring rounded-xl group" @click="currentView = 'library'">
+            <button type="button" class="flex items-center gap-3 focus-ring rounded-xl group" @click="refreshWebsite()"
+                    title="Refresh the website">
                 <div class="bg-gradient-to-br from-indigo-500 via-indigo-600 to-violet-600 p-2 sm:p-2.5 rounded-xl text-white shadow-md shadow-indigo-200/70 group-hover:shadow-lg group-hover:shadow-indigo-300/70 transition-all">
-                    <i data-lucide="cloud" class="w-5 h-5" aria-hidden="true"></i>
+                    <i :data-lucide="refreshingSite ? 'loader-2' : 'cloud'" class="w-5 h-5" :class="refreshingSite && 'animate-spin'" aria-hidden="true"></i>
                 </div>
                 <div class="flex flex-col items-start text-left leading-tight">
                     <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-900">
                         School Cloud <span class="text-indigo-600">System</span>
-                        <span class="ml-1.5 align-middle text-[10px] font-semibold text-slate-500 bg-slate-100 ring-1 ring-slate-200 rounded px-1.5 py-0.5">v1.3</span>
+                        <span class="ml-1.5 align-middle text-[10px] font-semibold text-slate-500 bg-slate-100 ring-1 ring-slate-200 rounded px-1.5 py-0.5">v1.4.1</span>
                     </h1>
                     <p class="text-[11px] font-medium text-slate-500 tracking-wide mt-0.5">
                         powered by <span class="font-semibold text-slate-700">Petgabs</span>
@@ -579,11 +580,19 @@
                     <h2 class="text-3xl font-bold text-slate-900">Admin Dashboard</h2>
                     <p class="text-slate-600 mt-2">Live usage for the public library, shared across every device.</p>
                 </div>
-                <button type="button" @click="refreshStats()" :disabled="stats.loadingDownloads" aria-label="Refresh statistics"
-                        class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-60 transition-colors shadow-sm focus-ring">
-                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="stats.loadingDownloads && 'animate-spin'" aria-hidden="true"></i>
-                    <span x-text="stats.loadingDownloads ? 'Refreshing…' : 'Refresh Stats'"></span>
-                </button>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button type="button" @click="refreshWebsite()" :disabled="refreshingSite" aria-label="Refresh the whole website"
+                            title="Reload the site and pick up the latest deployed version"
+                            class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-4 py-2 rounded-md hover:bg-slate-50 disabled:opacity-60 transition-colors focus-ring">
+                        <i :data-lucide="refreshingSite ? 'loader-2' : 'rotate-cw'" class="w-4 h-4" :class="refreshingSite && 'animate-spin'" aria-hidden="true"></i>
+                        <span x-text="refreshingSite ? 'Refreshing…' : 'Refresh Site'"></span>
+                    </button>
+                    <button type="button" @click="refreshStats()" :disabled="stats.loadingDownloads" aria-label="Refresh statistics"
+                            class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-60 transition-colors shadow-sm focus-ring">
+                        <i data-lucide="refresh-cw" class="w-4 h-4" :class="stats.loadingDownloads && 'animate-spin'" aria-hidden="true"></i>
+                        <span x-text="stats.loadingDownloads ? 'Refreshing…' : 'Refresh Stats'"></span>
+                    </button>
+                </div>
             </div>
 
             <!-- Counter backend status -->

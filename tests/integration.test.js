@@ -414,9 +414,110 @@ describe('degraded counter backend', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Hard refresh: the app-name button in the header and the Refresh Site button
+// in the Admin Dashboard both reload the whole site, asking the service
+// worker for a newer version first so one click is enough after a deploy.
+// ---------------------------------------------------------------------------
+
+describe('hard refresh (app name and dashboard)', () => {
+  let originalLocation;
+  let reload;
+
+  beforeEach(() => {
+    // jsdom cannot navigate; swap location for a spy. The global beforeAll
+    // already replaced window.location once, so redefining is safe here.
+    originalLocation = window.location;
+    reload = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        reload,
+        href: 'https://petgabs.github.io/BZFLS/',
+        pathname: '/BZFLS/',
+        search: '',
+        hostname: 'petgabs.github.io'
+      }
+    });
+    component.refreshingSite = false;
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation });
+    // The real page navigates away on refresh; tests must undo that by hand.
+    component.refreshingSite = false;
+  });
+
+  it('reloads the page when no service worker is registered', async () => {
+    // jsdom ships no service worker, so this exercises the no-update path.
+    await component.refreshWebsite();
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    // A second click while a refresh is already running must not double-load.
+    await component.refreshWebsite();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a waiting service worker take over instead of reloading at once', async () => {
+    const postMessage = vi.fn();
+    const update = vi.fn(async () => {});
+    const serviceWorker = {
+      getRegistration: vi.fn(async () => ({ update, waiting: { postMessage }, installing: null }))
+    };
+    const originalNavigator = Object.getOwnPropertyDescriptor(window, 'navigator');
+    Object.defineProperty(window, 'navigator', { configurable: true, value: { serviceWorker } });
+
+    vi.useFakeTimers();
+    try {
+      await component.refreshWebsite();
+
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(postMessage).toHaveBeenCalledTimes(1);
+      expect(postMessage).toHaveBeenCalledWith('skip-waiting');
+      // The page reloads via the controllerchange listener, not here…
+      expect(reload).not.toHaveBeenCalled();
+
+      // …but a stalled install must never swallow the click.
+      vi.advanceTimersByTime(4500);
+      expect(reload).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+      Object.defineProperty(window, 'navigator', originalNavigator);
+    }
+  });
+
+  it('wires the app-name button in the header to the hard refresh', () => {
+    const brandButton = document.querySelector('header button.group');
+    expect(brandButton).toBeTruthy();
+    expect(brandButton.textContent).toContain('School Cloud');
+
+    brandButton.click();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('wires the Refresh Site button in the dashboard to the hard refresh', async () => {
+    const previousRole = component.role;
+    const previousView = component.currentView;
+    component.role = 'admin';
+    component.currentView = 'dashboard';
+    await new Promise(done => setTimeout(done, 50));
+
+    const refreshSiteButton = document.querySelector('button[aria-label="Refresh the whole website"]');
+    expect(refreshSiteButton).toBeTruthy();
+    expect(refreshSiteButton.textContent).toContain('Refresh Site');
+
+    refreshSiteButton.click();
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    component.role = previousRole;
+    component.currentView = previousView;
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Teacher upload workflow: shared staff sign-in, structured upload with an
 // automatic preview, administrative approval, and instant searchability.
 // ---------------------------------------------------------------------------
+
 
 describe('teacher upload workflow', () => {
   const librarySizeBefore = () => component.apps.length;

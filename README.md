@@ -83,6 +83,24 @@ next to each reviewed submission.
   connected token, the button falls back to opening the manual delete page
   on github.com instead.
 
+### Refreshing the site (app name + dashboard)
+
+Clicking the **School Cloud System** name in the header — or the **Refresh
+Site** button at the top of the Admin Dashboard — reloads the whole website.
+Because the service worker serves the app shell from cache
+(stale-while-revalidate, see [Offline behaviour](#offline-behaviour)), a plain
+reload can still show the previous deploy for one more load. The refresh
+therefore asks the service worker to update first: if a newer version has been
+deployed, it is told to skip waiting, takes over at once and the page reloads
+itself with the fresh shell. With no update available (or no service worker)
+it is simply a normal reload — the library data is always fetched
+network-first anyway. A stalled install can never swallow the click: if the
+new worker has not taken over within a few seconds, the page reloads
+regardless.
+
+*(Refresh Stats, next to it in the dashboard, stays a lighter action: it only
+re-reads the download counters without reloading the page.)*
+
 ### Resource Statistics (Admin Dashboard)
 
 The **Admin Dashboard** has a **Resource Statistics** section, built entirely
