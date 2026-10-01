@@ -1,7 +1,7 @@
 [
   {
     "id": "265f69a4-c6c0-4177-93e0-aed46a91074f",
-    "path": "submissions/pending/265f69a4-c6c0-4177-93e0-aed46a91074f__seat plan-Version 4.docx",
+    "path": "",
     "fileName": "seat plan-Version 4.docx",
     "size": 1003735,
     "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -25,13 +25,13 @@
     "accessibility": "",
     "submittedBy": "teacher",
     "submittedAt": "2026-10-01T06:57:50.192Z",
-    "status": "pending",
-    "reviewedAt": "",
-    "reviewedBy": "",
+    "status": "approved",
+    "reviewedAt": "2026-10-01T06:58:49.076Z",
+    "reviewedBy": "administrator",
     "reviewNote": "",
-    "published": false,
-    "publishedPath": "",
-    "commitUrl": ""
+    "published": true,
+    "publishedPath": "apps/seat plan-Version 4.docx",
+    "commitUrl": "https://github.com/Petgabs/BZFLS/commit/ba0127dfee032e4c4539ef7dc1e8e9c7a92da8d9"
   },
   {
     "id": "c531050d-bc5c-407e-8843-15c0edf451be",
