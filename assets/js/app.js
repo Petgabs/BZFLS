@@ -38,7 +38,8 @@ import {
   CLOUD_TOKEN_PATH,
   CLOUD_QUEUE_PATH,
   CLOUD_TOKEN_FINGERPRINT_SESSION_KEY,
-  LIBRARY_CACHE_KEY
+  LIBRARY_CACHE_KEY,
+  FIRST_SEEN_KEY
 } from './config.js';
 
 import {
@@ -52,6 +53,14 @@ import {
   visibilityLabel,
   isReviewDue
 } from './lib/metadata.js';
+
+import {
+  freshnessBadge,
+  sortByFreshness,
+  countLatest,
+  addedAtOf,
+  freshnessStatus
+} from './lib/freshness.js';
 
 import {
   queryLibrary,
@@ -196,8 +205,14 @@ export function schoolCloud() {
     apps: [],
     overrides: new Map(),
 
+    // --- Freshness ("Latest" badges) ---------------------------------------
+    // `now` is refreshed on a timer so a card stops saying "Latest" once it is
+    // more than a day old, without a page reload.
+    now: Date.now(),
+    firstSeen: {},
+
     // --- Search & filters ---------------------------------------------------
-    filters: { query: '', subject: '', year: '', kind: '', sort: 'relevance' },
+    filters: { query: '', subject: '', year: '', kind: '', sort: 'newest' },
     showFilters: false,
 
     // --- Loading / error / offline -----------------------------------------
@@ -391,11 +406,37 @@ export function schoolCloud() {
     },
 
     get filteredMiniApps() {
-      return this.filteredApps.filter(app => app.meta?.isMiniApp);
+      return this.orderByFreshness(this.filteredApps.filter(app => app.meta?.isMiniApp));
     },
 
     get filteredResources() {
-      return this.filteredApps.filter(app => !app.meta?.isMiniApp);
+      return this.orderByFreshness(this.filteredApps.filter(app => !app.meta?.isMiniApp));
+    },
+
+    /**
+     * Newest first, oldest last — unless the visitor has explicitly chosen a
+     * different ordering (name, downloads, relevance with a live query).
+     */
+    orderByFreshness(items) {
+      const sort = this.filters.sort;
+      if (sort === 'name' || sort === 'downloads') return items;
+      if (sort === 'relevance' && this.filters.query.trim()) return items;
+      return sortByFreshness(items, new Date(this.now));
+    },
+
+    /** Badge data (Latest / Yesterday / date added) for a resource card. */
+    freshness(item) {
+      return freshnessBadge(item, new Date(this.now));
+    },
+
+    /** True when a resource was added within the last 24 hours. */
+    isLatest(item) {
+      return freshnessStatus(addedAtOf(item), new Date(this.now)) === 'latest';
+    },
+
+    /** How many library items are brand new (added today). */
+    get latestCount() {
+      return countLatest(this.apps, new Date(this.now));
     },
 
     get subjectOptions() {
@@ -446,6 +487,10 @@ export function schoolCloud() {
     },
 
     get filteredDashboardResources() {
+      return sortByFreshness(this.dashboardResourceMatches, new Date(this.now));
+    },
+
+    get dashboardResourceMatches() {
       const type = (this.dashboardResourceType || 'all').toLowerCase();
       const query = (this.dashboardResourceQuery || '').trim().toLowerCase();
 
@@ -469,6 +514,7 @@ export function schoolCloud() {
 
         return true;
       });
+      // Newest first on the admin dashboard too.
     },
 
     get rankedMiniApps() {
@@ -621,6 +667,10 @@ export function schoolCloud() {
       // sessionStorage by loadGithubToken() is what carries the session over.
       this.loadCloudToken({ silent: true });
 
+      this.loadFirstSeen();
+      // Keep the Latest / Yesterday badges honest while the page stays open.
+      setInterval(() => { this.now = Date.now(); }, 60 * 1000);
+
       // Restore filters from the URL so searches are shareable.
       this.readFiltersFromUrl();
       this.$watch('filters', () => this.writeFiltersToUrl(), { deep: true });
@@ -639,6 +689,73 @@ export function schoolCloud() {
       this.refreshStats();
     },
 
+    // --- First-seen ledger ---------------------------------------------------
+    //
+    // GitHub's contents API does not tell us when a file was added, so the
+    // browser keeps its own ledger: the first sync records a baseline (the
+    // files that already existed have an unknown date), and anything that
+    // appears afterwards is stamped with the moment it showed up. A curated
+    // `addedAt` in library.json always wins over the ledger.
+
+    loadFirstSeen() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(FIRST_SEEN_KEY) || '{}');
+        this.firstSeen = saved && typeof saved === 'object' ? saved : {};
+      } catch (error) {
+        console.warn('Ignoring an invalid first-seen ledger.', error);
+        this.firstSeen = {};
+      }
+    },
+
+    saveFirstSeen() {
+      try {
+        localStorage.setItem(FIRST_SEEN_KEY, JSON.stringify(this.firstSeen));
+      } catch (error) {
+        console.warn('Could not save the first-seen ledger.', error);
+      }
+    },
+
+    firstSeenKeyFor(app) {
+      return String(app?.githubPath || app?.fileName || app?.id || '').trim().toLowerCase();
+    },
+
+    /**
+     * Record when each file was first seen. On the very first run every file
+     * is marked as pre-existing (no date) so the whole library does not light
+     * up as "Latest".
+     */
+    recordFirstSeen(apps) {
+      const ledger = this.firstSeen && typeof this.firstSeen === 'object' ? { ...this.firstSeen } : {};
+      const baselineDone = Boolean(ledger.__baseline);
+      const stamp = new Date().toISOString();
+      let changed = false;
+
+      for (const app of apps || []) {
+        const key = this.firstSeenKeyFor(app);
+        if (!key || key === '__baseline') continue;
+        if (Object.prototype.hasOwnProperty.call(ledger, key)) continue;
+        ledger[key] = baselineDone ? stamp : null;
+        changed = true;
+      }
+
+      if (!baselineDone) {
+        ledger.__baseline = stamp;
+        changed = true;
+      }
+
+      if (changed) {
+        this.firstSeen = ledger;
+        this.saveFirstSeen();
+      }
+      return this.firstSeen;
+    },
+
+    /** The ledger's date for an app, if any. */
+    firstSeenAt(app) {
+      const key = this.firstSeenKeyFor(app);
+      return key ? this.firstSeen?.[key] || '' : '';
+    },
+
     // --- Metadata -----------------------------------------------------------
 
     /**
@@ -651,8 +768,13 @@ export function schoolCloud() {
     decorate(app, explicitOverride) {
       if (!app || typeof app !== 'object') return app;
       const overrides = explicitOverride || findOverride(this.overrides, app);
+      const meta = buildMetadata(app, overrides);
+      // Curated date wins; otherwise fall back to this browser's ledger of
+      // when the file first appeared in the cloud library.
+      const addedAt = meta.addedAt || app.addedAt || this.firstSeenAt(app) || '';
       return {
         ...app,
+        addedAt,
         // A curated title is the resource's real name; the file name is only
         // ever a fallback ("16G.pdf" says far less than a proper title).
         name: overrides.title || app.name || titleFromFileName(app.fileName),
@@ -661,7 +783,7 @@ export function schoolCloud() {
         // placeholder, so `app.description || overrides.description` would
         // silently discard the curated text.
         description: overrides.description || app.description || '',
-        meta: buildMetadata(app, overrides)
+        meta: { ...meta, addedAt: addedAt || '' }
       };
     },
 
@@ -681,7 +803,7 @@ export function schoolCloud() {
     // --- Filters ------------------------------------------------------------
 
     clearFilters() {
-      this.filters = { query: '', subject: '', year: '', kind: '', sort: 'relevance' };
+      this.filters = { query: '', subject: '', year: '', kind: '', sort: 'newest' };
     },
 
     setSubject(subject) {
@@ -722,7 +844,7 @@ export function schoolCloud() {
         if (this.filters.subject) params.set('subject', this.filters.subject);
         if (this.filters.year !== '') params.set('year', this.filters.year);
         if (this.filters.kind) params.set('kind', this.filters.kind);
-        if (this.filters.sort && this.filters.sort !== 'relevance') params.set('sort', this.filters.sort);
+        if (this.filters.sort && this.filters.sort !== 'newest') params.set('sort', this.filters.sort);
         const query = params.toString();
         const url = query
           ? `${globalThis.location.pathname}?${query}`
@@ -1954,6 +2076,14 @@ export function schoolCloud() {
 
       try {
         const files = await this.loadAppFiles(repo);
+        // Stamp new arrivals before decorating, so their "Latest" badge is
+        // based on when they appeared rather than when this page loaded.
+        this.recordFirstSeen(
+          files
+            .filter(file => file.type === 'file' && SUPPORTED_FILE_PATTERN.test(file.name))
+            .map(file => ({ githubPath: file.path, fileName: file.name }))
+        );
+
         const githubApps = files
           .filter(file => file.type === 'file' && SUPPORTED_FILE_PATTERN.test(file.name))
           .sort((a, b) => b.name.localeCompare(a.name))
@@ -1970,7 +2100,8 @@ export function schoolCloud() {
               githubPath: file.path,
               downloadUrl: file.download_url,
               size: file.size,
-              createdAt: file.createdAt || new Date().toISOString(),
+              createdAt: file.createdAt || file.addedAt || new Date().toISOString(),
+              addedAt: file.addedAt || this.firstSeenAt({ githubPath: file.path, fileName: file.name }) || '',
               source: 'github'
             });
           });

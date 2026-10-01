@@ -252,6 +252,9 @@ export function buildMetadata(item, overrides = {}) {
     reviewDate: pick('reviewDate'),
     licence: pick('licence'),
     accessibility: pick('accessibility'),
+    // When the resource joined the library (curated value wins), used by the
+    // dashboard to show the Latest / Yesterday / date-added badge.
+    addedAt: pick('addedAt') || pick('publishedAt'),
     // Whether any of the values above were curated rather than guessed.
     curated: Boolean(
       overrides.subject || overrides.years || overrides.tags || overrides.keywords ||

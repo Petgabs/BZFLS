@@ -162,16 +162,40 @@
                             </div>
                         </div>
 
+                        <!-- Subject / year dropdowns -->
+                        <div class="flex flex-wrap gap-3">
+                            <div>
+                                <label for="library-subject" class="sr-only">Filter by subject</label>
+                                <select id="library-subject" x-model="filters.subject"
+                                        class="h-full px-3 py-2.5 border border-slate-200 rounded-lg bg-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <option value="">All subjects</option>
+                                    <template x-for="subject in subjectOptions" :key="'opt-' + subject">
+                                        <option :value="subject" x-text="subject + ' (' + (facets.subjects.get(subject) || 0) + ')'"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="library-year" class="sr-only">Filter by year level</label>
+                                <select id="library-year" x-model="filters.year"
+                                        class="h-full px-3 py-2.5 border border-slate-200 rounded-lg bg-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <option value="">All year levels</option>
+                                    <template x-for="year in yearOptions" :key="'opt-year-' + year">
+                                        <option :value="year" x-text="'Year ' + year + ' (' + (facets.years.get(year) || 0) + ')'"></option>
+                                    </template>
+                                </select>
+                            </div>
+                        </div>
+
                         <!-- Sort -->
                         <div class="flex gap-3">
                             <div>
                                 <label for="library-sort" class="sr-only">Sort results</label>
                                 <select id="library-sort" x-model="filters.sort"
                                         class="h-full px-3 py-2.5 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                                    <option value="newest">Latest first (newest added)</option>
                                     <option value="relevance">Most relevant</option>
                                     <option value="downloads">Most downloaded</option>
                                     <option value="name">Name (A–Z)</option>
-                                    <option value="newest">Newest first</option>
                                 </select>
                             </div>
 
@@ -252,13 +276,25 @@
                 </div>
 
                 <!-- Result count, announced to screen readers -->
-                <p id="search-results-count" role="status" aria-live="polite"
-                   class="text-sm text-slate-500 mt-3"
-                   x-show="!loading.library">
-                    <span x-text="formatCount(resultCount)"></span>
-                    <span x-text="resultCount === 1 ? 'item' : 'items'"></span>
-                    <span x-show="hasActiveFilters" x-text="filterSummary"></span>
-                </p>
+                <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <p id="search-results-count" role="status" aria-live="polite"
+                       class="text-sm text-slate-500"
+                       x-show="!loading.library">
+                        <span x-text="formatCount(resultCount)"></span>
+                        <span x-text="resultCount === 1 ? 'item' : 'items'"></span>
+                        <span x-show="hasActiveFilters" x-text="filterSummary"></span>
+                    </p>
+                    <span x-show="latestCount > 0" x-cloak
+                          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300">
+                        <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                        <span x-text="latestCount + (latestCount === 1 ? ' new resource today' : ' new resources today')"></span>
+                    </span>
+                    <button type="button" x-show="hasActiveFilters" x-cloak @click="clearFilters()"
+                            class="inline-flex items-center gap-1.5 text-xs text-indigo-600 font-medium hover:text-indigo-800 focus-ring rounded-md px-1 py-0.5">
+                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                        Clear filters
+                    </button>
+                </div>
             </section>
 
             <!-- Error state -->
@@ -337,13 +373,24 @@
                 <h3 id="apps-heading" class="text-xl font-bold text-slate-900 mb-4">Mini Apps</h3>
                 <ul role="list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <template x-for="app in filteredMiniApps" :key="app.id">
-                        <li class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                        <li class="bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-shadow flex flex-col"
+                            :class="isLatest(app) ? 'border-emerald-300 ring-2 ring-emerald-100' : 'border-slate-200'">
                             <div class="p-6 flex flex-col flex-1">
                                 <div class="flex justify-between items-start gap-3 mb-1">
                                     <h4 class="text-lg font-bold text-slate-900 break-words" x-text="app.name"></h4>
                                     <span class="text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2 py-1 rounded flex-shrink-0">HTML5</span>
                                 </div>
                                 <p class="text-xs text-slate-400 mb-3 break-all" x-text="app.fileName"></p>
+
+                                <!-- When it was added: green "Latest" for the first day -->
+                                <div class="mb-3">
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ring-1"
+                                          :class="freshness(app).badgeClass" :title="freshness(app).title">
+                                        <i :data-lucide="freshness(app).iconName" class="w-3 h-3" aria-hidden="true"></i>
+                                        <span x-text="freshness(app).label"></span>
+                                    </span>
+                                    <span class="ml-2 text-[11px] text-slate-500" x-text="freshness(app).detail"></span>
+                                </div>
 
                                 <!-- Structured metadata -->
                                 <div class="flex flex-wrap items-center gap-1.5 mb-3">
@@ -378,7 +425,7 @@
                                         <span x-text="app.teacherName"></span>
                                     </span>
                                     <span aria-hidden="true">•</span>
-                                    <span x-text="formatDate(app.createdAt)"></span>
+                                    <span x-text="freshness(app).detail"></span>
                                 </div>
 
                                 <div class="flex items-center gap-2 mb-5">
@@ -429,7 +476,8 @@
                 </div>
                 <ul role="list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <template x-for="resource in filteredResources" :key="resource.id">
-                        <li class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                        <li class="bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-shadow flex flex-col"
+                            :class="isLatest(resource) ? 'border-emerald-300 ring-2 ring-emerald-100' : 'border-slate-200'">
                             <div class="p-6 flex flex-col flex-1">
                                 <div class="flex items-start justify-between gap-4 mb-1">
                                     <div class="flex items-center gap-3 min-w-0">
@@ -444,7 +492,17 @@
                                     <span class="text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 px-2 py-1 rounded flex-shrink-0" x-text="fileExtension(resource)"></span>
                                 </div>
 
-                                <div class="flex flex-wrap items-center gap-1.5 mb-3 mt-3">
+                                <!-- When it was added: green "Latest" for the first day -->
+                                <div class="mb-3 mt-3">
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ring-1"
+                                          :class="freshness(resource).badgeClass" :title="freshness(resource).title">
+                                        <i :data-lucide="freshness(resource).iconName" class="w-3 h-3" aria-hidden="true"></i>
+                                        <span x-text="freshness(resource).label"></span>
+                                    </span>
+                                    <span class="ml-2 text-[11px] text-slate-500" x-text="freshness(resource).detail"></span>
+                                </div>
+
+                                <div class="flex flex-wrap items-center gap-1.5 mb-3">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1"
                                           :class="subjectAccent(resource.meta.subject)" x-text="resource.meta.subject"></span>
                                     <span x-show="resource.meta.years.length"
@@ -710,6 +768,9 @@
                                     <th scope="row" class="px-6 py-4 text-left font-normal">
                                         <p class="font-medium text-slate-900" x-text="resource.name"></p>
                                         <p class="text-xs text-slate-400" x-text="resource.fileName"></p>
+                                        <span class="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ring-1"
+                                              :class="freshness(resource).badgeClass" :title="freshness(resource).title"
+                                              x-text="freshness(resource).label"></span>
                                     </th>
                                     <td class="px-6 py-4 hidden sm:table-cell text-slate-600" x-text="resource.meta.subject"></td>
                                     <td class="px-6 py-4">

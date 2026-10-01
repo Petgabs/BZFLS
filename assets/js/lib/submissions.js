@@ -175,6 +175,9 @@ export function overrideFromSubmission(record) {
   if (record.reviewDate) entry.reviewDate = record.reviewDate;
   if (record.licence) entry.licence = record.licence;
   if (record.accessibility) entry.accessibility = record.accessibility;
+  // Stamp when the resource joined the library so every device can show the
+  // "Latest" badge and sort newest-first, not just the one that published it.
+  entry.addedAt = record.publishedAt || record.submittedAt || new Date().toISOString();
   return entry;
 }
 
