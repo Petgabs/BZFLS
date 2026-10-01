@@ -402,16 +402,18 @@
                                             class="flex-1 inline-flex items-center justify-center gap-2 bg-slate-900 text-white py-2.5 rounded-lg hover:bg-slate-800 transition-colors focus-ring">
                                         <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i> Download
                                     </button>
-                                    <button type="button" x-show="isAdmin && app.source !== 'github'" @click="deleteApp(app.id)"
+                                    <button type="button" x-show="isAdmin && app.source !== 'github'" @click="confirmDeleteApp(app)"
                                             aria-label="Remove this browser-only app" title="Remove this browser-only app"
                                             class="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring">
                                         <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
                                     </button>
-                                    <a x-show="isAdmin && app.source === 'github'" :href="githubDeleteUrl(app)" target="_blank" rel="noopener noreferrer"
-                                       aria-label="Delete from GitHub" title="Delete from the public repository using your GitHub sign-in"
-                                       class="p-2.5 flex items-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring">
-                                        <i data-lucide="cloud-off" class="w-4 h-4" aria-hidden="true"></i>
-                                    </a>
+                                    <button type="button" x-show="isAdmin && app.source === 'github'" @click="confirmDeleteApp(app)"
+                                            :disabled="deletingAppId === app.id"
+                                            :aria-label="githubAuth.connected ? 'Delete from the GitHub repository' : 'Delete from GitHub'"
+                                            :title="githubAuth.connected ? 'Delete this file from the GitHub repository and library.json' : 'Connect GitHub Auto-Publish in Settings, or delete manually on github.com'"
+                                            class="p-2.5 flex items-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring disabled:opacity-60">
+                                        <i :data-lucide="deletingAppId === app.id ? 'loader-2' : 'cloud-off'" class="w-4 h-4" :class="deletingAppId === app.id && 'animate-spin'" aria-hidden="true"></i>
+                                    </button>
                                 </div>
                             </div>
                         </li>
@@ -585,6 +587,7 @@
                                 <th scope="col" class="text-left font-semibold px-6 py-3 hidden sm:table-cell">Source</th>
                                 <th scope="col" class="text-left font-semibold px-6 py-3">Downloads</th>
                                 <th scope="col" class="text-left font-semibold px-6 py-3 hidden md:table-cell w-1/4">Share</th>
+                                <th scope="col" class="text-right font-semibold px-6 py-3">Delete</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
@@ -606,6 +609,14 @@
                                              :aria-label="sharePercent(app) + '% of all downloads'">
                                             <div class="bg-emerald-500 h-2 rounded-full transition-all" :style="`width: ${sharePercent(app)}%`"></div>
                                         </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button type="button" @click="confirmDeleteApp(app)" :disabled="deletingAppId === app.id"
+                                                :aria-label="'Delete ' + app.name"
+                                                :title="app.source === 'github' ? 'Delete this file from the GitHub repository' : 'Remove this browser-only app'"
+                                                class="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring disabled:opacity-60">
+                                            <i :data-lucide="deletingAppId === app.id ? 'loader-2' : 'trash-2'" class="w-4 h-4" :class="deletingAppId === app.id && 'animate-spin'" aria-hidden="true"></i>
+                                        </button>
                                     </td>
                                 </tr>
                             </template>
@@ -636,6 +647,7 @@
                                 <th scope="col" class="text-left font-semibold px-6 py-3">Type</th>
                                 <th scope="col" class="text-left font-semibold px-6 py-3">Downloads</th>
                                 <th scope="col" class="text-left font-semibold px-6 py-3 hidden md:table-cell w-1/4">Share</th>
+                                <th scope="col" class="text-right font-semibold px-6 py-3">Delete</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
@@ -655,6 +667,14 @@
                                              :aria-label="sharePercent(resource) + '% of all downloads'">
                                             <div class="bg-amber-500 h-2 rounded-full transition-all" :style="`width: ${sharePercent(resource)}%`"></div>
                                         </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button type="button" @click="confirmDeleteApp(resource)" :disabled="deletingAppId === resource.id"
+                                                :aria-label="'Delete ' + resource.name"
+                                                :title="resource.source === 'github' ? 'Delete this file from the GitHub repository' : 'Remove this browser-only file'"
+                                                class="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring disabled:opacity-60">
+                                            <i :data-lucide="deletingAppId === resource.id ? 'loader-2' : 'trash-2'" class="w-4 h-4" :class="deletingAppId === resource.id && 'animate-spin'" aria-hidden="true"></i>
+                                        </button>
                                     </td>
                                 </tr>
                             </template>

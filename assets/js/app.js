@@ -109,6 +109,7 @@ import {
 import {
   createGithubPublisher,
   publishSubmissionToGithub as runGithubPublish,
+  deleteFileFromGithub as runGithubDelete,
   normaliseToken,
   isFineGrainedToken,
   blobToBase64
@@ -205,6 +206,7 @@ export function schoolCloud() {
       showToken: false
     },
     publishingSubmissionId: '',
+    deletingAppId: '',
 
     // --- Submissions -----------------------------------------------------------
     submissions: [],
@@ -899,6 +901,70 @@ export function schoolCloud() {
       }
     },
 
+    /**
+     * Permanently delete a file that lives in the public repository: removes
+     * it from `apps/` and drops its entry from `library.json`, in-app via
+     * the connected GitHub token — no trip to github.com required. Returns
+     * true on success.
+     */
+    async deleteAppFromGithub(app) {
+      if (!this.requireAdmin()) return false;
+      if (!app || app.source !== 'github') return false;
+      if (!this.githubAuth.connected) {
+        this.currentView = 'settings';
+        alert('Connect a GitHub token in Settings → GitHub Auto-Publish first, so deletions can be made from this page.');
+        return false;
+      }
+      if (this.deletingAppId) return false;
+
+      const path = String(app.githubPath || `apps/${app.fileName || ''}`).replace(/^\/+/, '');
+      this.deletingAppId = app.id;
+      try {
+        const publisher = this.buildGithubPublisher();
+        const result = await runGithubDelete(publisher, { path });
+        this.apps = this.apps.filter(item => item.id !== app.id);
+        this.saveApps();
+        this.syncFromGithub({ silent: true }).then(() => this.loadOverrides());
+        this.$nextTick(() => refreshIcons());
+        return true;
+      } catch (error) {
+        console.warn('GitHub delete failed.', error);
+        alert(`Deleting from GitHub failed: ${error.message}\n\nNothing was changed. You can retry, or delete the file manually on github.com.`);
+        return false;
+      } finally {
+        this.deletingAppId = '';
+        this.$nextTick(() => refreshIcons());
+      }
+    },
+
+    /**
+     * One confirm-and-delete handler for every file card and dashboard row:
+     * browser-only apps are removed locally; files already published to the
+     * public repository are deleted there too (via the connected GitHub
+     * token when available, falling back to the manual github.com page).
+     */
+    async confirmDeleteApp(app) {
+      if (!this.requireAdmin() || !app) return;
+
+      if (app.source !== 'github') {
+        this.deleteApp(app.id);
+        return;
+      }
+
+      if (this.githubAuth.connected) {
+        if (!confirm(`Permanently delete “${app.fileName}” from the GitHub repository and remove it from library.json?\n\nThis cannot be undone from here.`)) return;
+        const deleted = await this.deleteAppFromGithub(app);
+        if (deleted) {
+          alert(`Deleted. “${app.name}” was removed from the repository — it will disappear everywhere once GitHub Pages redeploys (usually 1–2 minutes).`);
+        }
+        return;
+      }
+
+      if (confirm('Connect GitHub Auto-Publish in Settings to delete cloud files directly from this page.\n\nOpen the manual delete page on github.com instead?')) {
+        globalThis.open?.(this.githubDeleteUrl(app), '_blank', 'noopener,noreferrer');
+      }
+    },
+
     async loadAppFiles(repo) {
       const hostname = globalThis.location?.hostname?.toLowerCase() || '';
       const onGithubPages = hostname.endsWith('.github.io');
@@ -1391,13 +1457,37 @@ export function schoolCloud() {
       if (!this.requireAdmin()) return;
       const record = this.submissions.find(item => item.id === id);
       if (!record) return;
-      if (!confirm(`Permanently remove “${record.title}”? The stored file will be deleted from this device.`)) return;
+
+      // Already published to the repository: deleting only the local record
+      // would leave an orphaned copy on GitHub, so fold in the cloud delete
+      // (via the connected token) when one is available.
+      if (record.published) {
+        const path = record.publishedPath || `apps/${record.fileName}`;
+        if (this.githubAuth.connected) {
+          if (!confirm(`Permanently remove “${record.title}”? This also deletes “${path}” from the GitHub repository and its entry in library.json. This cannot be undone.`)) return;
+          try {
+            const publisher = this.buildGithubPublisher();
+            await runGithubDelete(publisher, { path });
+          } catch (error) {
+            console.warn('GitHub delete failed.', error);
+            alert(`Deleting “${path}” from GitHub failed: ${error.message}\n\nThe submission record was not removed either, so you can retry.`);
+            return;
+          }
+        } else if (!confirm(`Permanently remove “${record.title}” from this device?\n\nIt was already published to “${path}” on GitHub — connect GitHub Auto-Publish in Settings to also delete it from the repository, or remove it manually on github.com.`)) {
+          return;
+        }
+      } else if (!confirm(`Permanently remove “${record.title}”? The stored file will be deleted from this device.`)) {
+        return;
+      }
 
       this.submissions = this.submissions.filter(item => item.id !== id);
-      this.apps = this.apps.filter(app => app.submissionId !== id);
+      this.apps = this.apps.filter(app => app.submissionId !== id && app.githubPath !== (record.publishedPath || `apps/${record.fileName}`));
       await deleteFile(id);
       this.saveSubmissions();
       this.saveApps();
+      if (record.published && this.githubAuth.connected) {
+        this.syncFromGithub({ silent: true }).then(() => this.loadOverrides());
+      }
       this.$nextTick(() => refreshIcons());
     },
 
