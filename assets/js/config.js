@@ -61,10 +61,10 @@ export const ADMIN_SESSION_KEY = 'schoolcloud_admin_session';
 // can upload and describe resources but cannot delete anything — removal from
 // the public repository happens on github.com with the administrator's
 // account, and browser-side actions are guarded in code.
-export const TEACHER_USERNAME = 'hoc-teacher';
+export const TEACHER_USERNAME = 'hsc-teacher';
 export const TEACHER_HASH_SALT = 'BZFLS-SchoolCloud';
 export const TEACHER_PASSWORD_SHA256 =
-  'c793d667d6aa03c9001b2b8416f55ee3ade89c781d7cf1233e9d424ba1e70512';
+ '56f580444b9adb758bd63f15249997b73699ad95c78a66a1d2b32c815992542c'
 export const TEACHER_SESSION_KEY = 'schoolcloud_teacher_session';
 
 // Teacher submissions wait in a review queue until an administrator approves
