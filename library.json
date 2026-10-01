@@ -85,5 +85,19 @@
     "department": "Mathematics",
     "version": "1.0",
     "addedAt": "2026-10-01T12:42:56.894Z"
+  },
+  "apps/Easy-Paper 1-answers.pdf": {
+    "title": "Easy Paper 1 answers — SOLUTIONS",
+    "description": "",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0",
+    "addedAt": "2026-10-01T12:43:51.509Z"
   }
 }
