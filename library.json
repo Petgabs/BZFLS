@@ -14,19 +14,6 @@
     "Entries produced by the teacher upload workflow can be copied straight",
     "from the Review Submissions screen (\"Copy metadata\")."
   ],
-  "apps/Year 10 & 11  class schedule.pdf": {
-    "subject": "Administration",
-    "years": [
-      10,
-      11
-    ],
-    "tags": [
-      "timetable",
-      "schedule",
-      "term planning"
-    ],
-    "description": "Weekly class timetable for Year 10 and Year 11, including room allocations and period times."
-  },
   "apps/Paper2_Solutions_Booklet (1).pdf": {
     "title": "Finance Practice",
     "description": "",
