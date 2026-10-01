@@ -44,5 +44,18 @@
     "language": "English",
     "owner": "Peter",
     "version": "1.0"
+  },
+  "apps/Meeting with the Deputy Principal.docx": {
+    "title": "Meeting With Claire",
+    "description": "Minutes of meeting",
+    "subject": "Others",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "version": "1.0",
+    "addedAt": "2026-10-01T11:36:42.353Z"
   }
 }
