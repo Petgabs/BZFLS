@@ -220,6 +220,10 @@ export function schoolCloud() {
     errors: { library: '', preview: '' },
     offline: false,
     usingCachedLibrary: false,
+    // True while a hard refresh (the app-name button or the dashboard's
+    // Refresh Site button) is asking the service worker for a newer version
+    // before reloading the page. The reload itself clears it.
+    refreshingSite: false,
 
     // --- Preview ------------------------------------------------------------
     preview: { open: false, item: null, descriptor: null },
@@ -1028,6 +1032,64 @@ export function schoolCloud() {
       // Resource Statistics needs every teacher's uploads, not just this
       // device's, so pull in the shared cloud queue too.
       this.loadCloudQueue({ silent: true });
+    },
+
+    // --- Hard refresh ---------------------------------------------------------
+
+    /**
+     * Reload the whole site. Wired to the app-name button in the header and
+     * the Refresh Site button in the Admin Dashboard.
+     *
+     * A plain reload can still show the previous deploy: the service worker
+     * hands out the app shell from cache (stale-while-revalidate, see sw.js),
+     * so the fresh copy only lands on the load *after* the revalidation. To
+     * make one click enough, ask the worker to update first — when a newer
+     * version is installing or waiting, tell it to skip waiting; it then
+     * takes over and the controllerchange listener in index.html reloads the
+     * page with the fresh shell. With no update available (or no service
+     * worker, or any failure along the way) this is just a normal reload,
+     * which still fetches the library data network-first. A stalled install
+     * can never swallow the click: if the new worker has not taken over
+     * within a few seconds, reload anyway.
+     */
+    async refreshWebsite() {
+      if (this.refreshingSite) return;
+      this.refreshingSite = true;
+      this.$nextTick(() => refreshIcons());
+
+      let reloaded = false;
+      const reload = () => {
+        if (reloaded) return;
+        reloaded = true;
+        globalThis.location.reload();
+      };
+      // Safety net so a slow or stuck install never blocks the visitor.
+      const fallbackTimer = setTimeout(reload, 4000);
+
+      const navigatorRef = globalThis.navigator;
+      if (navigatorRef && 'serviceWorker' in navigatorRef && navigatorRef.serviceWorker.getRegistration) {
+        try {
+          const registration = await navigatorRef.serviceWorker.getRegistration();
+          if (registration) {
+            // Checks the network for a newly deployed sw.js (registered with
+            // updateViaCache: 'none'), so this is what spots a new version.
+            await registration.update();
+            const worker = registration.waiting || registration.installing;
+            if (worker) {
+              // skipWaiting + clients.claim → controllerchange → the page
+              // reloads itself; the fallback timer covers an install that
+              // never finishes.
+              worker.postMessage('skip-waiting');
+              return;
+            }
+          }
+        } catch (error) {
+          console.warn('Could not check for a new version before refreshing.', error);
+        }
+      }
+
+      clearTimeout(fallbackTimer);
+      reload();
     },
 
     // --- Display helpers ----------------------------------------------------
