@@ -99,5 +99,19 @@
     "department": "Mathematics",
     "version": "1.0",
     "addedAt": "2026-10-01T12:47:00.279Z"
+  },
+  "apps/Easy-Moderate-Paper 2-answers.pdf": {
+    "title": "Easy Moderate Paper 2 answers — SOLUTIONS",
+    "description": "",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0",
+    "addedAt": "2026-10-01T12:51:00.710Z"
   }
 }
