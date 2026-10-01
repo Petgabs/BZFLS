@@ -539,6 +539,93 @@ export function schoolCloud() {
       return this.apps.filter(app => app.source === 'github').length;
     },
 
+    // --- Student dashboard ---------------------------------------------------
+
+    /** A small, count-first subject menu for students who do not know where to start. */
+    get subjectShortcuts() {
+      return [...this.subjectOptions]
+        .map(subject => ({ subject, count: this.facets.subjects.get(subject) || 0 }))
+        .sort((a, b) => b.count - a.count || a.subject.localeCompare(b.subject));
+    },
+
+    /** A human greeting keeps the landing space friendly without storing student data. */
+    get studentGreeting() {
+      const hour = new Date().getHours();
+      if (hour < 12) return 'Good morning';
+      if (hour < 18) return 'Good afternoon';
+      return 'Good evening';
+    },
+
+    // --- Admin command centre ------------------------------------------------
+
+    /** Published resources whose configured review date has passed. */
+    get reviewDueApps() {
+      return sortByFreshness(
+        this.apps.filter(app => isReviewDue(app.meta?.reviewDate)),
+        new Date(this.now)
+      );
+    },
+
+    /** Files that cannot be confidently routed to a class need administrator attention. */
+    get unclassifiedApps() {
+      return this.apps.filter(app => {
+        const meta = app.meta || {};
+        return !String(meta.subject || '').trim() || !Array.isArray(meta.years) || meta.years.length === 0;
+      });
+    },
+
+    /** Concise actionable workload summary shown at the top of the admin dashboard. */
+    get managementAlerts() {
+      return [
+        {
+          id: 'submissions',
+          label: 'Awaiting review',
+          count: this.submissionCounts.pending,
+          description: this.submissionCounts.pending
+            ? 'Teacher submissions are waiting for a publishing decision.'
+            : 'The submission queue is clear.',
+          actionLabel: this.submissionCounts.pending ? 'Review queue' : 'Open queue',
+          destination: 'submissions',
+          icon: 'inbox',
+          tone: 'amber'
+        },
+        {
+          id: 'reviews',
+          label: 'Review dates due',
+          count: this.reviewDueApps.length,
+          description: this.reviewDueApps.length
+            ? 'Published files have passed their scheduled review date.'
+            : 'No published file is overdue for review.',
+          actionLabel: this.reviewDueApps.length ? 'Review files' : 'View status',
+          destination: 'review-due',
+          icon: 'calendar-clock',
+          tone: 'rose'
+        },
+        {
+          id: 'metadata',
+          label: 'Classification gaps',
+          count: this.unclassifiedApps.length,
+          description: this.unclassifiedApps.length
+            ? 'Files need a subject or year level before students can find them easily.'
+            : 'Every file has a subject and year level.',
+          actionLabel: 'Open library',
+          destination: 'library',
+          icon: 'tags',
+          tone: 'indigo'
+        }
+      ];
+    },
+
+    get dashboardAttentionCount() {
+      return this.managementAlerts.reduce((total, alert) => total + Number(alert.count || 0), 0);
+    },
+
+    get topResources() {
+      return [...this.apps]
+        .sort((a, b) => this.downloadsOf(b) - this.downloadsOf(a) || String(a.name || a.fileName || '').localeCompare(String(b.name || b.fileName || '')))
+        .slice(0, 5);
+    },
+
     // --- Resource statistics (admin) -----------------------------------------
     //
     // Built from every file currently published in the GitHub cloud, each
@@ -825,6 +912,74 @@ export function schoolCloud() {
     setDashboardResourceType(type) {
       this.dashboardResourceType = type;
       this.$nextTick(() => refreshIcons());
+    },
+
+    /** Move students to the catalogue and place their cursor in its search field. */
+    focusLibrarySearch() {
+      this.currentView = 'library';
+      this.$nextTick(() => {
+        const search = document.getElementById('library-search');
+        search?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        search?.focus?.();
+      });
+    },
+
+    /** Start a subject-focused browse without making students operate advanced filters. */
+    browseSubject(subject) {
+      this.filters = { query: '', subject: String(subject || ''), year: '', kind: '', sort: 'newest' };
+      this.showFilters = false;
+      this.focusLibrarySearch();
+    },
+
+    /** Return to an uncluttered newest-first catalogue. */
+    browseLatest() {
+      this.filters = { query: '', subject: '', year: '', kind: '', sort: 'newest' };
+      this.showFilters = false;
+      this.currentView = 'library';
+      this.$nextTick(() => {
+        document.getElementById('library-catalog')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      });
+    },
+
+    /** Route an administrator from an alert or quick action to the relevant workspace. */
+    openAdminWorkspace(destination) {
+      if (!this.requireAdmin()) return;
+      if (destination === 'submissions') {
+        this.openSubmissions();
+        return;
+      }
+      if (destination === 'upload') {
+        this.openUpload();
+        return;
+      }
+      if (destination === 'settings') {
+        this.currentView = 'settings';
+        return;
+      }
+      if (destination === 'library') {
+        this.clearFilters();
+        this.showFilters = false;
+        this.currentView = 'library';
+        this.$nextTick(() => document.getElementById('library-catalog')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
+        return;
+      }
+      if (destination === 'review-due') {
+        this.$nextTick(() => document.getElementById('review-due-section')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
+      }
+    },
+
+    /** Open an individual file in the student library, where preview/download controls live. */
+    openResourceInLibrary(resource) {
+      if (!resource) return;
+      this.filters = {
+        query: String(resource.name || resource.fileName || ''),
+        subject: '',
+        year: '',
+        kind: '',
+        sort: 'relevance'
+      };
+      this.showFilters = true;
+      this.focusLibrarySearch();
     },
 
     readFiltersFromUrl() {

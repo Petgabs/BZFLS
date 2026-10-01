@@ -13,7 +13,7 @@
  *   Review queue (submissions/*)    -> never cached; it must be live.
  * ------------------------------------------------------------------------- */
 
-const VERSION = 'v1.4.1';
+const VERSION = 'v1.4.2';
 const SHELL_CACHE = `schoolcloud-shell-${VERSION}`;
 const DATA_CACHE = `schoolcloud-data-${VERSION}`;
 const FILE_CACHE = `schoolcloud-files-${VERSION}`;
