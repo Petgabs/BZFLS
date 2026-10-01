@@ -96,6 +96,13 @@ export const TEACHER_OVERRIDE_KEY = 'schoolcloud_teacher_override';
 export const GITHUB_CONFIG_KEY = 'schoolcloud_github_config';
 export const LIBRARY_CACHE_KEY = 'schoolcloud_library_cache';
 
+// Dashboard preferences for the "Library data safety" panel: whether the
+// error/warning list is collapsed, and which individual messages an
+// administrator has dismissed. Device-local and purely cosmetic — dismissing
+// a message never changes the library itself, and a dismissed message comes
+// back if the underlying problem is still there after "Restore hidden".
+export const INTEGRITY_UI_KEY = 'schoolcloud_integrity_ui';
+
 // Records the moment each cloud file was first seen by this browser, so the
 // dashboard can show "Latest" / "Yesterday" badges even when a resource has no
 // curated addedAt date in library.json.

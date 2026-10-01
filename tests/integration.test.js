@@ -1525,3 +1525,165 @@ describe('cross-device review queue', () => {
     expect(component.submissions.some(item => item.id === record.id)).toBe(true);
   });
 });
+
+describe('library data safety panel', () => {
+  const TOKEN = 'github_pat_11SAFETY00examplevalue_AA1';
+  let repo;
+
+  function b64(text) {
+    return Buffer.from(text, 'utf8').toString('base64');
+  }
+  function unb64(content) {
+    return Buffer.from(content, 'base64').toString('utf8');
+  }
+  function apiPath(href) {
+    const match = href.match(/\/contents\/([^?]+)/);
+    return match ? decodeURIComponent(match[1].split('/').map(decodeURIComponent).join('/')) : '';
+  }
+
+  beforeEach(() => {
+    repo = new Map([
+      ['library.json', JSON.stringify({
+        'apps/ghost.pdf': { title: 'Deleted long ago' },
+        'apps/Year 10 & 11  class schedule.pdf': { subject: 'Administration', years: [10, 11] }
+      }, null, 2)]
+    ]);
+
+    vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'confirm').mockImplementation(() => true);
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const href = String(url);
+      const method = options.method || 'GET';
+
+      if (href.includes('/contents/')) {
+        const path = apiPath(href);
+        if (method === 'PUT') {
+          repo.set(path, unb64(JSON.parse(options.body).content));
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ content: { sha: `sha-${path}` }, commit: { sha: 'c1', html_url: 'https://github.test/c1' } })
+          };
+        }
+        if (!repo.has(path)) {
+          return { ok: false, status: 404, text: async () => 'Not Found', json: async () => ({ message: 'Not Found' }) };
+        }
+        const envelope = { sha: `sha-${path}`, size: repo.get(path).length, encoding: 'base64', content: b64(repo.get(path)) };
+        return { ok: true, status: 200, text: async () => JSON.stringify(envelope), json: async () => envelope };
+      }
+
+      if (href.includes('library.json')) return { ok: true, status: 200, json: async () => JSON.parse(repo.get('library.json')) };
+      if (href.includes('apps.json')) return { ok: true, status: 200, json: async () => MANIFEST };
+      throw new Error('network disabled in tests');
+    }));
+
+    component.role = 'admin';
+    component.submissions = [];
+    component.offline = false;
+    component.usingCachedLibrary = false;
+    component.errors.library = '';
+    component.overridesLoaded = true;
+    component.restoreIntegrityIssues();
+    component.githubAuth.connected = false;
+    component.githubAuth.token = '';
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    component.restoreIntegrityIssues();
+    component.integrityUi.diagnosis = null;
+    component.integrityUi.log = [];
+    component.githubAuth.connected = false;
+    component.githubAuth.token = '';
+  });
+
+  it('reports the stale metadata entry as an error', async () => {
+    await component.loadOverrides();
+    const stale = component.integrityReport.issues.find(issue => issue.subject.includes('ghost'));
+    expect(stale).toBeTruthy();
+    expect(stale.severity).toBe('error');
+    expect(component.integrityReport.counts.errors).toBeGreaterThan(0);
+  });
+
+  it('deletes a single message without touching the counts', async () => {
+    await component.loadOverrides();
+    const total = component.integrityReport.issues.length;
+    const victim = component.integrityReport.issues[0];
+
+    component.dismissIntegrityIssue(victim);
+
+    expect(component.visibleIntegrityIssues).toHaveLength(total - 1);
+    expect(component.visibleIntegrityIssues.some(issue => issue.id === victim.id)).toBe(false);
+    expect(component.dismissedIntegrityCount).toBe(1);
+    // The underlying check is untouched: the tiles still tell the truth.
+    expect(component.integrityReport.issues).toHaveLength(total);
+  });
+
+  it('remembers dismissed messages on this device and can restore them', async () => {
+    await component.loadOverrides();
+    const victim = component.integrityReport.issues[0];
+    component.dismissIntegrityIssue(victim);
+
+    const saved = JSON.parse(localStorage.getItem('schoolcloud_integrity_ui'));
+    expect(saved.dismissed).toContain(victim.id);
+
+    component.restoreIntegrityIssues();
+    expect(component.dismissedIntegrityCount).toBe(0);
+    expect(component.integrityUi.hideIssues).toBe(false);
+  });
+
+  it('hides and shows the whole message section with one button', async () => {
+    await component.loadOverrides();
+    expect(component.integrityIssuesHidden).toBe(false);
+
+    component.hideAllIntegrityIssues();
+    expect(component.integrityIssuesHidden).toBe(true);
+    expect(JSON.parse(localStorage.getItem('schoolcloud_integrity_ui')).hideIssues).toBe(true);
+
+    component.toggleIntegrityIssues();
+    expect(component.integrityIssuesHidden).toBe(false);
+  });
+
+  it('diagnoses the cause and says what still needs a connection', async () => {
+    await component.loadOverrides();
+    const diagnosis = component.runIntegrityTroubleshooter();
+
+    expect(component.integrityUi.troubleshooterOpen).toBe(true);
+    const stale = diagnosis.findings.find(item => item.id === 'metadata-missing-file');
+    expect(stale.cause).toMatch(/deleted from apps\//);
+    // No token in this tab, so repository repairs are reported, not attempted.
+    expect(diagnosis.manualOnly).toBeGreaterThan(0);
+    expect(diagnosis.canRepair).toBe(false);
+  });
+
+  it('repairs the stale metadata entry once GitHub is connected', async () => {
+    component.githubConfig.repo = 'Petgabs/BZFLS';
+    component.githubAuth.token = TOKEN;
+    component.githubAuth.connected = true;
+    await component.loadOverrides();
+    component.runIntegrityTroubleshooter();
+
+    await component.repairIntegrityIssues();
+
+    const library = JSON.parse(repo.get('library.json'));
+    expect(library['apps/ghost.pdf']).toBeUndefined();
+    // The curated entry for a real file is kept, and uncurated files gained one.
+    expect(library['apps/Year 10 & 11  class schedule.pdf']).toBeTruthy();
+    expect(library['apps/Year 9 algebra practice.html']).toBeTruthy();
+    expect(component.integrityUi.log.some(entry => entry.state === 'ok')).toBe(true);
+    expect(component.integrityUi.summary).toMatch(/repaired/);
+  });
+
+  it('refuses to repair while the live data is unreliable', async () => {
+    component.githubAuth.token = TOKEN;
+    component.githubAuth.connected = true;
+    component.offline = true;
+    await component.loadOverrides();
+    component.runIntegrityTroubleshooter();
+
+    await component.repairIntegrityIssues();
+
+    expect(JSON.parse(repo.get('library.json'))['apps/ghost.pdf']).toBeTruthy();
+    expect(component.integrityUi.log).toHaveLength(0);
+  });
+});

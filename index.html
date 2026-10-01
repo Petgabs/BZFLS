@@ -45,7 +45,7 @@
                 <div class="flex flex-col items-start text-left leading-tight">
                     <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-900">
                         School Cloud <span class="text-indigo-600">System</span>
-                        <span class="ml-1.5 align-middle text-[10px] font-semibold text-slate-500 bg-slate-100 ring-1 ring-slate-200 rounded px-1.5 py-0.5">v1.6.0</span>
+                        <span class="ml-1.5 align-middle text-[10px] font-semibold text-slate-500 bg-slate-100 ring-1 ring-slate-200 rounded px-1.5 py-0.5">v1.7.0</span>
                     </h1>
                     <p class="text-[11px] font-medium text-slate-500 tracking-wide mt-0.5">
                         powered by <span class="font-semibold text-slate-700">Petgabs</span>
@@ -706,6 +706,12 @@
                             <i data-lucide="clipboard-copy" class="h-4 w-4" aria-hidden="true"></i>
                             Copy report
                         </button>
+                        <button type="button" @click="runIntegrityTroubleshooter()" :disabled="integrityUi.running"
+                                title="Work out what is causing the problems, and repair the ones that can be fixed safely"
+                                class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60 focus-ring">
+                            <i :data-lucide="integrityUi.running ? 'loader-2' : 'wrench'" class="h-4 w-4" :class="integrityUi.running && 'animate-spin'" aria-hidden="true"></i>
+                            <span x-text="integrityUi.running ? 'Checking…' : 'Troubleshoot'"></span>
+                        </button>
                     </div>
                 </div>
 
@@ -732,24 +738,142 @@
                     </div>
                 </div>
 
+                <!-- Troubleshooter: likely causes, and the repairs that can be made from here. -->
+                <div x-show="integrityUi.troubleshooterOpen" x-cloak class="mt-5 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">Troubleshooter</p>
+                            <p class="mt-1 text-base font-bold text-slate-900" x-text="integrityDiagnosis ? integrityDiagnosis.headline : 'Run a check to see what is wrong.'"></p>
+                            <p class="mt-1 text-xs text-slate-500">
+                                <span x-show="integrityUi.ranAt">Last checked <span x-text="formatDate(integrityUi.ranAt)"></span>.</span>
+                                <span x-show="integrityUi.summary" class="font-semibold text-slate-700" x-text="integrityUi.summary"></span>
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="button" @click="runIntegrityTroubleshooter()" :disabled="integrityUi.running || integrityUi.repairing"
+                                    class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 focus-ring">
+                                <i data-lucide="stethoscope" class="h-4 w-4" aria-hidden="true"></i>
+                                Re-check
+                            </button>
+                            <button type="button" @click="repairIntegrityIssues()"
+                                    :disabled="integrityUi.repairing || !integrityDiagnosis || !integrityDiagnosis.canRepair"
+                                    :title="integrityDiagnosis && !integrityDiagnosis.canRepair ? 'Nothing here can be repaired automatically right now' : 'Apply every safe repair'"
+                                    class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60 focus-ring">
+                                <i :data-lucide="integrityUi.repairing ? 'loader-2' : 'wand-2'" class="h-4 w-4" :class="integrityUi.repairing && 'animate-spin'" aria-hidden="true"></i>
+                                <span x-text="integrityUi.repairing ? 'Repairing…' : (integrityDiagnosis && integrityDiagnosis.autoFixable ? `Fix ${integrityDiagnosis.autoFixable} problem(s)` : 'Fix automatically')"></span>
+                            </button>
+                            <button type="button" @click="copyIntegrityDiagnosis()"
+                                    class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-ring">
+                                <i data-lucide="clipboard-copy" class="h-4 w-4" aria-hidden="true"></i>
+                                Copy
+                            </button>
+                            <button type="button" @click="closeIntegrityTroubleshooter()" aria-label="Close the troubleshooter"
+                                    class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 focus-ring">
+                                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 space-y-2">
+                        <template x-for="finding in (integrityDiagnosis ? integrityDiagnosis.findings : [])" :key="finding.id">
+                            <article class="rounded-lg border p-3 text-sm" :class="integrityFindingClass(finding)">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <p class="font-bold">
+                                        <span x-text="finding.label"></span>
+                                        <span x-show="finding.count" class="opacity-70" x-text="` × ${finding.count}`"></span>
+                                    </p>
+                                    <span class="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide"
+                                          x-text="finding.autoFixable ? 'auto-fixable' : finding.state"></span>
+                                </div>
+                                <p class="mt-1 leading-6"><span class="font-semibold">Likely cause:</span> <span x-text="finding.cause"></span></p>
+                                <p class="mt-1 leading-6"><span class="font-semibold">Fix:</span> <span x-text="finding.remedy"></span></p>
+                            </article>
+                        </template>
+                    </div>
+
+                    <div x-show="integrityDiagnosis && integrityDiagnosis.manualOnly > 0" x-cloak
+                         class="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                        <i data-lucide="plug-zap" class="mt-0.5 h-4 w-4" aria-hidden="true"></i>
+                        <p>
+                            <span x-text="integrityDiagnosis ? integrityDiagnosis.manualOnly : 0"></span>
+                            repair(s) need the repository: connect GitHub Auto-Publish in Settings, then press Fix again.
+                        </p>
+                    </div>
+
+                    <div x-show="integrityUi.log.length > 0" x-cloak class="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">Repair log</p>
+                        <ul class="mt-2 space-y-1 text-sm">
+                            <template x-for="(entry, index) in integrityUi.log" :key="index">
+                                <li class="flex items-start gap-2"
+                                    :class="entry.state === 'ok' ? 'text-emerald-700' : (entry.state === 'failed' ? 'text-rose-700' : 'text-slate-600')">
+                                    <i :data-lucide="entry.state === 'ok' ? 'check' : (entry.state === 'failed' ? 'x-circle' : 'info')" class="mt-0.5 h-3.5 w-3.5" aria-hidden="true"></i>
+                                    <span x-text="entry.message"></span>
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+                </div>
+
                 <div x-show="integrityReport.issues.length === 0" class="mt-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                     <i data-lucide="check-circle-2" class="mt-0.5 h-4 w-4" aria-hidden="true"></i>
                     <p>All published files, metadata entries and queue records line up. The dashboard statistics are safe to use.</p>
                 </div>
 
-                <div x-show="integrityReport.issues.length > 0" class="mt-5 space-y-3">
-                    <template x-for="issue in integrityReport.issues" :key="issue.type + '-' + issue.subject">
-                        <article class="rounded-xl border p-4 text-sm" :class="integrityIssueClass(issue)">
-                            <div class="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <p class="font-bold" x-text="issue.title"></p>
-                                    <p class="mt-1 leading-6" x-text="issue.detail"></p>
-                                    <p class="mt-2 text-xs font-semibold uppercase tracking-wide opacity-80" x-text="issue.action"></p>
+                <!-- Error / warning messages, with per-message delete and a hide-all switch. -->
+                <div x-show="integrityReport.issues.length > 0" class="mt-5">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <h4 class="text-sm font-bold uppercase tracking-wide text-slate-500">
+                            Error messages
+                            <span class="font-semibold text-slate-400" x-text="`(${visibleIntegrityIssues.length} shown)`"></span>
+                        </h4>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="button" @click="restoreIntegrityIssues()"
+                                    x-show="integrityUi.hideIssues || dismissedIntegrityCount > 0" x-cloak
+                                    class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-ring">
+                                <i data-lucide="rotate-ccw" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                                <span x-text="`Restore hidden (${dismissedIntegrityCount + (integrityUi.hideIssues ? visibleIntegrityIssues.length : 0)})`"></span>
+                            </button>
+                            <button type="button" @click="toggleIntegrityIssues()"
+                                    :aria-expanded="(!integrityUi.hideIssues).toString()" aria-controls="integrity-issue-list"
+                                    :title="integrityUi.hideIssues ? 'Show the error and warning messages again' : 'Hide every error and warning message'"
+                                    class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 focus-ring">
+                                <i :data-lucide="integrityUi.hideIssues ? 'eye' : 'eye-off'" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                                <span x-text="integrityUi.hideIssues ? 'Show error messages' : 'Hide all error messages'"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <p x-show="integrityUi.hideIssues" x-cloak class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                        The message list is hidden. The checks still run, and the Errors and Warnings tiles above stay accurate.
+                    </p>
+
+                    <div id="integrity-issue-list" x-show="!integrityUi.hideIssues" class="mt-3 space-y-3">
+                        <template x-for="issue in visibleIntegrityIssues" :key="issue.id">
+                            <article class="rounded-xl border p-4 text-sm" :class="integrityIssueClass(issue)">
+                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <p class="font-bold" x-text="issue.title"></p>
+                                        <p class="mt-1 leading-6" x-text="issue.detail"></p>
+                                        <p class="mt-2 text-xs font-semibold uppercase tracking-wide opacity-80" x-text="issue.action"></p>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide" x-text="issue.severity"></span>
+                                        <button type="button" @click="dismissIntegrityIssue(issue)"
+                                                :aria-label="`Delete the message: ${issue.title}`"
+                                                title="Remove this message from the list (the check itself still runs)"
+                                                class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/70 text-slate-500 transition hover:bg-white hover:text-rose-700 focus-ring">
+                                            <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
                                 </div>
-                                <span class="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide" x-text="issue.severity"></span>
-                            </div>
-                        </article>
-                    </template>
+                            </article>
+                        </template>
+
+                        <p x-show="visibleIntegrityIssues.length === 0" x-cloak
+                           class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                            Every message has been deleted from this list. Use “Restore hidden” to bring them back.
+                        </p>
+                    </div>
                 </div>
             </section>
 
