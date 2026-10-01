@@ -490,6 +490,18 @@
                                             class="flex-1 inline-flex items-center justify-center gap-2 bg-slate-900 text-white py-2.5 rounded-lg hover:bg-slate-800 transition-colors focus-ring">
                                         <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i> Download
                                     </button>
+                                    <button type="button" x-show="isAdmin && resource.source !== 'github'" @click="confirmDeleteApp(resource)"
+                                            aria-label="Remove this browser-only file" title="Remove this browser-only file"
+                                            class="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring">
+                                        <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" x-show="isAdmin && resource.source === 'github'" @click="confirmDeleteApp(resource)"
+                                            :disabled="deletingAppId === resource.id"
+                                            :aria-label="githubAuth.connected ? 'Delete from the GitHub repository' : 'Delete from GitHub'"
+                                            :title="githubAuth.connected ? 'Delete this file from the GitHub repository and library.json' : 'Connect GitHub Auto-Publish in Settings, or delete manually on github.com'"
+                                            class="p-2.5 flex items-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring disabled:opacity-60">
+                                        <i :data-lucide="deletingAppId === resource.id ? 'loader-2' : 'cloud-off'" class="w-4 h-4" :class="deletingAppId === resource.id && 'animate-spin'" aria-hidden="true"></i>
+                                    </button>
                                 </div>
                             </div>
                         </li>
@@ -627,17 +639,58 @@
 
             <!-- Per-resource table -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mt-8">
-                <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                <div class="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
                     <div>
                         <h3 class="font-bold text-slate-900">Documents &amp; Resources</h3>
-                        <p class="text-xs text-slate-400 mt-0.5" x-text="resources.length + (resources.length === 1 ? ' downloadable file' : ' downloadable files')"></p>
+                        <p class="text-xs text-slate-400 mt-0.5" x-text="resources.length + (resources.length === 1 ? ' downloadable file (PDF, Word, Excel, PowerPoint)' : ' downloadable files (PDF, Word, Excel, PowerPoint)')"></p>
                     </div>
-                    <i data-lucide="files" class="w-5 h-5 text-amber-600" aria-hidden="true"></i>
+                    <div class="flex items-center gap-3">
+                        <label for="dashboard-resource-search" class="sr-only">Filter documents by title or filename</label>
+                        <input id="dashboard-resource-search" type="search" x-model="dashboardResourceQuery" placeholder="Filter documents…"
+                               class="px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none w-44 sm:w-56">
+                        <i data-lucide="files" class="w-5 h-5 text-amber-600 hidden sm:block" aria-hidden="true"></i>
+                    </div>
                 </div>
-                <template x-if="resources.length === 0">
-                    <p class="px-6 py-10 text-center text-slate-500 text-sm">No documents or resources in the library yet.</p>
+
+                <!-- Type & Source Filter Bar -->
+                <div class="px-6 py-2.5 bg-slate-50/70 border-b border-slate-200 flex flex-wrap items-center gap-1.5 text-xs">
+                    <span class="text-slate-400 font-medium mr-1">Filter:</span>
+                    <button type="button" @click="setDashboardResourceType('all')"
+                            class="px-2.5 py-1 rounded-full font-medium transition-colors focus-ring"
+                            :class="dashboardResourceType === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'">
+                        All (<span x-text="dashboardResourceCounts.all"></span>)
+                    </button>
+                    <button type="button" @click="setDashboardResourceType('pdf')"
+                            class="px-2.5 py-1 rounded-full font-medium transition-colors focus-ring"
+                            :class="dashboardResourceType === 'pdf' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'">
+                        PDF (<span x-text="dashboardResourceCounts.pdf"></span>)
+                    </button>
+                    <button type="button" @click="setDashboardResourceType('word')"
+                            class="px-2.5 py-1 rounded-full font-medium transition-colors focus-ring"
+                            :class="dashboardResourceType === 'word' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'">
+                        Word (<span x-text="dashboardResourceCounts.word"></span>)
+                    </button>
+                    <button type="button" @click="setDashboardResourceType('excel')"
+                            class="px-2.5 py-1 rounded-full font-medium transition-colors focus-ring"
+                            :class="dashboardResourceType === 'excel' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'">
+                        Excel (<span x-text="dashboardResourceCounts.excel"></span>)
+                    </button>
+                    <button type="button" @click="setDashboardResourceType('ppt')"
+                            class="px-2.5 py-1 rounded-full font-medium transition-colors focus-ring"
+                            :class="dashboardResourceType === 'ppt' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'">
+                        PowerPoint (<span x-text="dashboardResourceCounts.ppt"></span>)
+                    </button>
+                    <button type="button" @click="setDashboardResourceType('cloud')"
+                            class="px-2.5 py-1 rounded-full font-medium transition-colors focus-ring"
+                            :class="dashboardResourceType === 'cloud' ? 'bg-sky-600 text-white shadow-sm' : 'bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200'">
+                        GitHub Cloud (<span x-text="dashboardResourceCounts.cloud"></span>)
+                    </button>
+                </div>
+
+                <template x-if="filteredDashboardResources.length === 0">
+                    <p class="px-6 py-10 text-center text-slate-500 text-sm" x-text="resources.length === 0 ? 'No documents or resources in the library yet.' : 'No documents match the selected filter.'"></p>
                 </template>
-                <div x-show="resources.length > 0" class="overflow-x-auto">
+                <div x-show="filteredDashboardResources.length > 0" class="overflow-x-auto">
                     <table class="min-w-full text-sm">
                         <caption class="sr-only">Download totals for each document and resource</caption>
                         <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
@@ -645,13 +698,14 @@
                                 <th scope="col" class="text-left font-semibold px-6 py-3">Resource</th>
                                 <th scope="col" class="text-left font-semibold px-6 py-3 hidden sm:table-cell">Subject</th>
                                 <th scope="col" class="text-left font-semibold px-6 py-3">Type</th>
+                                <th scope="col" class="text-left font-semibold px-6 py-3 hidden sm:table-cell">Source</th>
                                 <th scope="col" class="text-left font-semibold px-6 py-3">Downloads</th>
                                 <th scope="col" class="text-left font-semibold px-6 py-3 hidden md:table-cell w-1/4">Share</th>
                                 <th scope="col" class="text-right font-semibold px-6 py-3">Delete</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
-                            <template x-for="resource in resources" :key="resource.id">
+                            <template x-for="resource in filteredDashboardResources" :key="resource.id">
                                 <tr class="hover:bg-slate-50">
                                     <th scope="row" class="px-6 py-4 text-left font-normal">
                                         <p class="font-medium text-slate-900" x-text="resource.name"></p>
@@ -660,6 +714,11 @@
                                     <td class="px-6 py-4 hidden sm:table-cell text-slate-600" x-text="resource.meta.subject"></td>
                                     <td class="px-6 py-4">
                                         <span class="text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 px-2 py-1 rounded" x-text="fileExtension(resource)"></span>
+                                    </td>
+                                    <td class="px-6 py-4 hidden sm:table-cell">
+                                        <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
+                                              :class="resource.source === 'github' ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-600'"
+                                              x-text="resource.source === 'github' ? 'GitHub Cloud' : 'Local'"></span>
                                     </td>
                                     <td class="px-6 py-4 font-semibold text-slate-900" x-text="formatCount(downloadsOf(resource))"></td>
                                     <td class="px-6 py-4 hidden md:table-cell">
@@ -670,8 +729,8 @@
                                     </td>
                                     <td class="px-6 py-4 text-right">
                                         <button type="button" @click="confirmDeleteApp(resource)" :disabled="deletingAppId === resource.id"
-                                                :aria-label="'Delete ' + resource.name"
-                                                :title="resource.source === 'github' ? 'Delete this file from the GitHub repository' : 'Remove this browser-only file'"
+                                                :aria-label="'Delete ' + resource.name + (resource.source === 'github' ? ' from GitHub' : '')"
+                                                :title="resource.source === 'github' ? (githubAuth.connected ? 'Delete this ' + fileExtension(resource) + ' file from GitHub Cloud repository and library.json' : 'Delete this file from GitHub') : 'Remove this local file'"
                                                 class="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all focus-ring disabled:opacity-60">
                                             <i :data-lucide="deletingAppId === resource.id ? 'loader-2' : 'trash-2'" class="w-4 h-4" :class="deletingAppId === resource.id && 'animate-spin'" aria-hidden="true"></i>
                                         </button>
@@ -721,7 +780,7 @@
                                 <div class="text-sm text-slate-600">
                                     <span class="font-semibold text-indigo-600">Click to upload</span> or drag and drop
                                 </div>
-                                <p class="text-xs text-slate-400" x-text="draftFile ? 'Selected: ' + draftFile.name : 'PDF, Word, Excel, PowerPoint or HTML — up to 8 MB'"></p>
+                                <p class="text-xs text-slate-400" x-text="draftFile ? 'Selected: ' + draftFile.name : 'PDF, Word, Excel, PowerPoint or HTML — up to 50 MB'"></p>
                                 <p class="text-xs font-medium text-slate-500" x-show="draftFile" x-text="draftFile ? formatBytes(draftFile.size) + ' · ' + kindLabel({fileName: draftFile.name}) : ''"></p>
                             </div>
                         </div>

@@ -211,6 +211,10 @@ export function schoolCloud() {
     // --- Submissions -----------------------------------------------------------
     submissions: [],
 
+    // --- Admin Dashboard filter state -----------------------------------------
+    dashboardResourceType: 'all',
+    dashboardResourceQuery: '',
+
     // --- Teacher access (administrator) ---------------------------------------
     // A device-local override of the shared teacher login, set from Settings.
     // Stores only the username and salted SHA-256 digest — never a password.
@@ -327,6 +331,46 @@ export function schoolCloud() {
 
     get resources() {
       return this.apps.filter(app => !app.meta?.isMiniApp);
+    },
+
+    get dashboardResourceCounts() {
+      const counts = { all: 0, pdf: 0, word: 0, excel: 0, ppt: 0, cloud: 0 };
+      for (const r of this.resources) {
+        counts.all += 1;
+        const ext = (r.meta?.extension || extensionOf(r.fileName) || '').toLowerCase();
+        if (ext === 'pdf') counts.pdf += 1;
+        else if (ext === 'doc' || ext === 'docx') counts.word += 1;
+        else if (ext === 'xls' || ext === 'xlsx') counts.excel += 1;
+        else if (ext === 'ppt' || ext === 'pptx') counts.ppt += 1;
+        if (r.source === 'github') counts.cloud += 1;
+      }
+      return counts;
+    },
+
+    get filteredDashboardResources() {
+      const type = (this.dashboardResourceType || 'all').toLowerCase();
+      const query = (this.dashboardResourceQuery || '').trim().toLowerCase();
+
+      return this.resources.filter(resource => {
+        const ext = (resource.meta?.extension || extensionOf(resource.fileName) || '').toLowerCase();
+
+        if (type === 'pdf' && ext !== 'pdf') return false;
+        if (type === 'word' && ext !== 'doc' && ext !== 'docx') return false;
+        if (type === 'excel' && ext !== 'xls' && ext !== 'xlsx') return false;
+        if (type === 'ppt' && ext !== 'ppt' && ext !== 'pptx') return false;
+        if (type === 'cloud' && resource.source !== 'github') return false;
+
+        if (query) {
+          const name = String(resource.name || '').toLowerCase();
+          const fileName = String(resource.fileName || '').toLowerCase();
+          const subject = String(resource.meta?.subject || '').toLowerCase();
+          if (!name.includes(query) && !fileName.includes(query) && !subject.includes(query)) {
+            return false;
+          }
+        }
+
+        return true;
+      });
     },
 
     get rankedMiniApps() {
@@ -462,6 +506,11 @@ export function schoolCloud() {
 
     setKind(kind) {
       this.filters.kind = this.filters.kind === kind ? '' : kind;
+    },
+
+    setDashboardResourceType(type) {
+      this.dashboardResourceType = type;
+      this.$nextTick(() => refreshIcons());
     },
 
     readFiltersFromUrl() {
@@ -985,9 +1034,13 @@ export function schoolCloud() {
 
       const [owner, repository] = repo.split('/');
       const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/contents/apps`;
+      const headers = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+      if (this.githubAuth?.connected && this.githubAuth?.token) {
+        headers.Authorization = `Bearer ${this.githubAuth.token}`;
+      }
       const response = await fetch(endpoint, {
         cache: 'no-store',
-        headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
+        headers
       });
 
       if (response.status === 404) {

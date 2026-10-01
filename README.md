@@ -18,7 +18,7 @@ GitHub:
 | Step | What happens |
 | --- | --- |
 | 1. Sign in | Separate **Teacher Login** button (shared staff account, kept in `assets/js/config.js` as a salted SHA-256 digest). Teachers can upload but never delete. |
-| 2. Upload resource | Any supported classroom file — PDF, Word, Excel, PowerPoint or HTML, up to 8 MB. |
+| 2. Upload resource | Any supported classroom file — PDF, Word, Excel, PowerPoint or HTML, up to 50 MB. |
 | 3. Add structured metadata | Title, description, subject, grade/year, topic, resource type, language, owner, department, academic year, keywords, visibility, version, review date, licence, accessibility notes. Subject/year suggestions are offered automatically. |
 | 4. Automatic preview | A live card preview (exactly how the resource will appear) plus a sandboxed file preview for PDFs and HTML. |
 | 5. Submit for publication | The submission joins the review queue with status *pending*. |

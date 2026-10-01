@@ -554,3 +554,98 @@ describe('teacher credential rotation (administrator)', () => {
     expect(component.effectiveTeacherUsername).toBe('hoc-teacher');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Administrator cloud file deletion and dashboard management
+// ---------------------------------------------------------------------------
+
+describe('administrator cloud file deletion and dashboard features', () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'confirm').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('allows files up to 50 MB and rejects files exceeding 50 MB', () => {
+    component.role = 'teacher';
+    component.openUpload();
+
+    // 55 MB file is rejected
+    const oversizedFile = new File(['x'.repeat(100)], 'large.pdf', { type: 'application/pdf' });
+    Object.defineProperty(oversizedFile, 'size', { value: 55 * 1024 * 1024 });
+    component.ingestFile(oversizedFile);
+    expect(component.draftErrors.file).toMatch(/50 MB/);
+
+    // 40 MB file is accepted
+    const validLargeFile = new File(['x'.repeat(100)], 'valid-large.pdf', { type: 'application/pdf' });
+    Object.defineProperty(validLargeFile, 'size', { value: 40 * 1024 * 1024 });
+    component.ingestFile(validLargeFile);
+    expect(component.draftErrors.file).toBeFalsy();
+    expect(component.draftFile.name).toBe('valid-large.pdf');
+    component.clearDraftFile();
+  });
+
+  it('filters dashboard resources by type and cloud source', () => {
+    component.role = 'admin';
+    component.currentView = 'dashboard';
+
+    expect(component.dashboardResourceCounts.all).toBeGreaterThan(0);
+    expect(component.dashboardResourceCounts.pdf).toBeGreaterThan(0);
+
+    component.setDashboardResourceType('pdf');
+    expect(component.dashboardResourceType).toBe('pdf');
+    for (const item of component.filteredDashboardResources) {
+      expect(item.meta.extension).toBe('pdf');
+    }
+
+    component.setDashboardResourceType('cloud');
+    for (const item of component.filteredDashboardResources) {
+      expect(item.source).toBe('github');
+    }
+
+    component.setDashboardResourceType('all');
+    component.dashboardResourceQuery = 'schedule';
+    expect(component.filteredDashboardResources.length).toBe(1);
+    component.dashboardResourceQuery = '';
+  });
+
+  it('allows an administrator to delete a cloud PDF file using GitHub API', async () => {
+    component.role = 'admin';
+    component.githubAuth.connected = true;
+    component.githubAuth.token = 'github_pat_test123';
+
+    const pdfApp = component.apps.find(app => app.source === 'github' && app.meta.extension === 'pdf');
+    expect(pdfApp).toBeTruthy();
+    const initialCount = component.apps.length;
+
+    // Stub fetch for GitHub delete and library update
+    const fetchStub = vi.fn(async (url, options = {}) => {
+      const href = String(url);
+      if (options.method === 'DELETE') {
+        return { ok: true, status: 200, json: async () => ({ commit: { sha: 'del-sha', html_url: 'https://github.com/Petgabs/BZFLS/commit/del-sha' } }) };
+      }
+      if (href.includes('contents/library.json')) {
+        return { ok: true, status: 200, json: async () => ({ sha: 'lib-sha', content: 'e30=', encoding: 'base64' }) };
+      }
+      if (href.includes('contents/apps/')) {
+        return { ok: true, status: 200, json: async () => ({ sha: 'file-sha', content: 'e30=', encoding: 'base64' }) };
+      }
+      if (href.includes('library.json')) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      if (href.includes('apps.json')) {
+        return { ok: true, status: 200, json: async () => MANIFEST.filter(f => f.name !== pdfApp.fileName) };
+      }
+      throw new Error('network disabled in tests');
+    });
+    vi.stubGlobal('fetch', fetchStub);
+
+    const deleted = await component.deleteAppFromGithub(pdfApp);
+    expect(deleted).toBe(true);
+    expect(component.apps.some(app => app.id === pdfApp.id)).toBe(false);
+    expect(component.apps.length).toBe(initialCount - 1);
+  });
+});
