@@ -105,7 +105,7 @@ describe('isReviewDue', () => {
 
 describe('validateDraft', () => {
   it('accepts a complete draft', () => {
-    expect(validateDraft(filledDraft(), FILE, { maxBytes: 8 * 1024 * 1024 })).toEqual({});
+    expect(validateDraft(filledDraft(), FILE, { maxBytes: 50 * 1024 * 1024 })).toEqual({});
   });
 
   it('requires a file, a title and an owner', () => {
@@ -121,9 +121,9 @@ describe('validateDraft', () => {
   });
 
   it('rejects oversized files with the limit in the message', () => {
-    const big = { ...FILE, size: 9 * 1024 * 1024 };
-    const errors = validateDraft(filledDraft(), big, { maxBytes: 8 * 1024 * 1024 });
-    expect(errors.file).toMatch(/8 MB/);
+    const big = { ...FILE, size: 55 * 1024 * 1024 };
+    const errors = validateDraft(filledDraft(), big, { maxBytes: 50 * 1024 * 1024 });
+    expect(errors.file).toMatch(/50 MB/);
   });
 });
 
