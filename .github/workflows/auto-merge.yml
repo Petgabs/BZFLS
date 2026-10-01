@@ -1,0 +1,28 @@
+name: Auto-merge approved internal updates
+
+# A maintainer adds the `automerge` label after reviewing a PR. Only PRs whose
+# head branch is in this repository are eligible; forked code is never granted
+# a write-capable token. GitHub waits for the required quality check before
+# merging, so a transient failure cannot publish a broken site.
+on:
+  pull_request_target:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable:
+    name: Enable merge after checks pass
+    if: >-
+      github.event.label.name == 'automerge' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable GitHub auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --auto --squash

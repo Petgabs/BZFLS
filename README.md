@@ -8,6 +8,49 @@ Students browse, preview and download files. Teachers sign in with the shared
 staff account and upload resources through a guided workflow; an administrator
 reviews each submission. There is no server to run and no secret to manage.
 
+## Reliability, scale and safe publishing
+
+Version 1.5 adds a resilience layer for busy school sessions. GitHub Pages
+serves the public shell and files from its CDN, while the browser protects the
+experience when a backend is slow or temporarily unavailable:
+
+* The service worker uses stale-while-revalidate for the shell, network-first
+  data loading with a cache-busting-safe key, and a bounded cache for published
+  downloads. It times out stalled requests and coalesces duplicate requests for
+  the same file, so repeated downloads do not multiply bandwidth or memory.
+* Counter reads use the managed Supabase batch endpoint when configured, fall
+  back in small concurrent batches, and use a short circuit breaker plus a
+  local mirror when a provider is down. A counter outage never blocks the
+  library or a download.
+* GitHub upload and queue operations have bounded timeouts, exponential
+  backoff for transient failures and optimistic-concurrency retries for
+  `queue.json` and `library.json`. Two teachers can submit at once without one
+  overwriting the other's queue entry or metadata.
+* The browser applies a content-security policy, sandboxed previews,
+  path-traversal checks, no-cache handling for tokens/review data, and secure
+  response headers on hosts that support `_headers`. Publishing tokens remain
+  session-only or encrypted at rest; they are never committed as plaintext.
+
+A static site cannot provide server-side authentication or hide a token from a
+person who is already authorised to use the browser. For stronger staff
+identity, use an identity-aware upload service in front of GitHub rather than
+sharing the teacher password. The safeguards here prevent accidental exposure
+and transient failures; they do not turn client-side login into server-side
+access control.
+
+### Automatic validation, merge and deployment
+
+Every pull request and branch update runs `.github/workflows/quality.yml`
+(syntax checks, the full test suite, a production asset build and a production
+dependency audit). The `pages.yml` workflow builds and deploys the site after a
+commit reaches `main`; its concurrency policy cancels obsolete deployments so
+an older build cannot overwrite a newer one.
+
+After a maintainer reviews an internal pull request, adding the `automerge`
+label enables GitHub auto-merge. GitHub waits for the quality check, squashes
+the change into `main`, and the Pages workflow publishes it. Fork pull
+requests are deliberately excluded from this write-capable automation.
+
 ---
 
 ## Phase 2 — teacher upload workflow

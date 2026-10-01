@@ -6,6 +6,11 @@
     <title>School Cloud System — Classroom Library</title>
     <meta name="description" content="School Cloud System — browse, preview and download classroom mini apps, documents and resources by subject and year group.">
     <meta name="theme-color" content="#4f46e5">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <!-- Defence in depth for the static deployment. Alpine's distributed
+         runtime needs unsafe-eval; no inline script is permitted. Uploaded
+         HTML is still rendered in a sandboxed iframe without same-origin. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.github.com https://*.supabase.co https://abacus.jasoncameron.dev; frame-src 'self' blob: https://view.officeapps.live.com; worker-src 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests">
 
     <!-- Locally bundled styles and scripts: no third-party CDN is required,
          so the site keeps working on restricted school networks and offline. -->
@@ -40,7 +45,7 @@
                 <div class="flex flex-col items-start text-left leading-tight">
                     <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-900">
                         School Cloud <span class="text-indigo-600">System</span>
-                        <span class="ml-1.5 align-middle text-[10px] font-semibold text-slate-500 bg-slate-100 ring-1 ring-slate-200 rounded px-1.5 py-0.5">v1.4.2</span>
+                        <span class="ml-1.5 align-middle text-[10px] font-semibold text-slate-500 bg-slate-100 ring-1 ring-slate-200 rounded px-1.5 py-0.5">v1.5.0</span>
                     </h1>
                     <p class="text-[11px] font-medium text-slate-500 tracking-wide mt-0.5">
                         powered by <span class="font-semibold text-slate-700">Petgabs</span>
@@ -2389,30 +2394,6 @@
         </div>
     </main>
 
-    <script>
-        // Register the service worker for offline support. Kept inline and
-        // tiny so it works even if the module bundle fails to load.
-        //
-        // Update flow: the worker script itself is always fetched from the
-        // network (updateViaCache: 'none'), so a new VERSION deploys promptly.
-        // When the new worker takes over, the page reloads once — visitors
-        // see the new version on their next refresh instead of a mix of old
-        // cached assets.
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                let refreshed = false;
-                navigator.serviceWorker.addEventListener('controllerchange', () => {
-                    if (refreshed) return;
-                    refreshed = true;
-                    window.location.reload();
-                });
-                navigator.serviceWorker
-                    .register('./sw.js', { updateViaCache: 'none' })
-                    .catch(error => {
-                        console.warn('Offline support is unavailable.', error);
-                    });
-            });
-        }
-    </script>
+    <script type="module" src="./assets/js/register-sw.js"></script>
 </body>
 </html>

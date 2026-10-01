@@ -52,6 +52,53 @@ function authHeaders(token) {
   return { ...API_HEADERS, Authorization: `Bearer ${token}` };
 }
 
+// GitHub's Contents API is a shared, rate-limited service. A short-lived
+// network hiccup or a 429/5xx response must not turn a successful teacher
+// upload into a duplicate retry by the user. Keep retries bounded, never
+// retry permission errors, and always abort a request that has stopped
+// responding. The higher-level JSON commit helper below still owns 409/422
+// stale-SHA conflicts because those require a fresh read before retrying.
+const API_TIMEOUT_MS = 20_000;
+const API_ATTEMPTS = 4;
+const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function retryDelay(response, attempt) {
+  const retryAfter = response?.headers?.get?.('retry-after');
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, 8000);
+  // Exponential backoff with a small jitter keeps many teachers from
+  // retrying on the exact same millisecond after a rate-limit response.
+  return Math.min(250 * (2 ** attempt) + Math.random() * 150, 5000);
+}
+
+async function requestWithResilience(fetchImpl, url, options = {}, config = {}) {
+  const attempts = Math.max(1, Number(config.attempts) || API_ATTEMPTS);
+  const timeoutMs = Math.max(1000, Number(config.timeoutMs) || API_TIMEOUT_MS);
+  let lastError;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    try {
+      const response = await fetchImpl(url, { ...options, ...(controller ? { signal: controller.signal } : {}) });
+      if (!RETRYABLE_STATUSES.has(response.status) || attempt === attempts - 1) return response;
+      await wait(retryDelay(response, attempt));
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts - 1) throw error;
+      await wait(Math.min(250 * (2 ** attempt) + Math.random() * 150, 5000));
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  throw lastError || new Error('GitHub request failed.');
+}
+
 /** `apps/My File.pdf` → `apps/My%20File.pdf` (keeps the `/` separators). */
 export function encodeRepoPath(path) {
   return String(path || '')
@@ -208,7 +255,7 @@ export function createGithubPublisher(config = {}) {
     async verify() {
       let response;
       try {
-        response = await fetchImpl(`${API_BASE}/repos/${encodeRepoPath(repo)}`, {
+        response = await requestWithResilience(fetchImpl, `${API_BASE}/repos/${encodeRepoPath(repo)}`, {
           headers: authHeaders(token),
           cache: 'no-store'
         });
@@ -230,7 +277,7 @@ export function createGithubPublisher(config = {}) {
       // here is not an error.
       let login = '';
       try {
-        const userResponse = await fetchImpl(`${API_BASE}/user`, { headers: authHeaders(token), cache: 'no-store' });
+        const userResponse = await requestWithResilience(fetchImpl, `${API_BASE}/user`, { headers: authHeaders(token), cache: 'no-store' });
         if (userResponse.ok) login = (await userResponse.json())?.login || '';
       } catch {
         /* Cosmetic only. */
@@ -246,7 +293,7 @@ export function createGithubPublisher(config = {}) {
     async getFile(path) {
       let response;
       try {
-        response = await fetchImpl(`${contentsUrl(path)}?ref=${encodeURIComponent(branch)}`, {
+        response = await requestWithResilience(fetchImpl, `${contentsUrl(path)}?ref=${encodeURIComponent(branch)}`, {
           headers: authHeaders(token),
           cache: 'no-store'
         });
@@ -277,7 +324,7 @@ export function createGithubPublisher(config = {}) {
     async getFileBase64(path) {
       let response;
       try {
-        response = await fetchImpl(`${contentsUrl(path)}?ref=${encodeURIComponent(branch)}`, {
+        response = await requestWithResilience(fetchImpl, `${contentsUrl(path)}?ref=${encodeURIComponent(branch)}`, {
           headers: authHeaders(token),
           cache: 'no-store'
         });
@@ -294,7 +341,7 @@ export function createGithubPublisher(config = {}) {
 
       let blobResponse;
       try {
-        blobResponse = await fetchImpl(`${API_BASE}/repos/${encodeRepoPath(repo)}/git/blobs/${encodeURIComponent(sha)}`, {
+        blobResponse = await requestWithResilience(fetchImpl, `${API_BASE}/repos/${encodeRepoPath(repo)}/git/blobs/${encodeURIComponent(sha)}`, {
           headers: authHeaders(token),
           cache: 'no-store'
         });
@@ -329,7 +376,7 @@ export function createGithubPublisher(config = {}) {
 
       let response;
       try {
-        response = await fetchImpl(contentsUrl(options.path), {
+        response = await requestWithResilience(fetchImpl, contentsUrl(options.path), {
           method: 'PUT',
           headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
@@ -366,7 +413,7 @@ export function createGithubPublisher(config = {}) {
 
       let response;
       try {
-        response = await fetchImpl(contentsUrl(options.path), {
+        response = await requestWithResilience(fetchImpl, contentsUrl(options.path), {
           method: 'DELETE',
           headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
@@ -406,6 +453,7 @@ export function createGithubPublisher(config = {}) {
  */
 export async function commitJsonWithRetry(publisher, options = {}) {
   const attempts = Math.max(1, Number(options.attempts) || 3);
+  const retryDelayMs = Math.max(0, Number(options.retryDelayMs) || 120);
   let lastError;
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -428,6 +476,9 @@ export async function commitJsonWithRetry(publisher, options = {}) {
       const retryable = error instanceof GithubPublishError && (error.status === 409 || error.status === 422);
       if (!retryable || attempt === attempts - 1) throw error;
       lastError = error;
+      // Give the competing commit time to become visible before re-reading.
+      // The randomized tail avoids a thundering herd of teacher tabs.
+      await wait(Math.min(retryDelayMs * (2 ** attempt) + Math.random() * retryDelayMs, 3000));
     }
   }
 
@@ -479,15 +530,16 @@ export async function publishSubmissionToGithub(publisher, input) {
       : `Publish ${path}: ${title} (via School Cloud System)`
   });
 
-  // 2. The curated metadata. library.json may legitimately be missing — the
-  //    site treats it as optional — so a missing file simply starts a new one.
-  const library = await publisher.getFile('library.json');
-  const mergedText = mergeLibraryEntry(library.text, path, input.entry || {});
-  const libraryResult = await publisher.putFile({
+  // 2. Merge metadata with an optimistic-concurrency retry. A missing
+  //    library.json simply starts a new one. Unlike a read/put pair, this
+  //    cannot lose a second teacher's metadata when two approvals land at the
+  //    same time: a stale SHA causes a fresh read and the transform is applied
+  //    to the newest library.json.
+  const libraryResult = await commitJsonWithRetry(publisher, {
     path: 'library.json',
-    contentBase64: textToBase64(mergedText),
-    sha: library.exists ? library.sha : '',
-    message: `Add curated metadata for ${path} (via School Cloud System)`
+    attempts: 5,
+    message: `Add curated metadata for ${path} (via School Cloud System)`,
+    transform: currentText => mergeLibraryEntry(currentText, path, input.entry || {})
   });
 
   return {
@@ -525,22 +577,14 @@ export async function deleteFileFromGithub(publisher, input) {
     });
   }
 
-  // Metadata clean-up is best-effort: library.json may be missing, may not
-  // reference this path, or the delete may be the only thing the caller
-  // wants — any of those is a no-op, not a failure.
-  let libraryResult = { commitUrl: '' };
-  const library = await publisher.getFile('library.json');
-  if (library.exists) {
-    const mergedText = removeLibraryEntry(library.text, path);
-    if (mergedText !== null) {
-      libraryResult = await publisher.putFile({
-        path: 'library.json',
-        contentBase64: textToBase64(mergedText),
-        sha: library.sha,
-        message: `Remove metadata for ${path} (via School Cloud System)`
-      });
-    }
-  }
+  // Metadata clean-up is best-effort, but still conflict-safe: another
+  // approval or deletion can update library.json while this file is removed.
+  const libraryResult = await commitJsonWithRetry(publisher, {
+    path: 'library.json',
+    attempts: 5,
+    message: `Remove metadata for ${path} (via School Cloud System)`,
+    transform: currentText => removeLibraryEntry(currentText, path)
+  });
 
   return {
     path,
