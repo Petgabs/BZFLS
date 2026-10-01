@@ -1,9 +1,88 @@
-# BZFLS-SchoolCloud
+# School Cloud System
+
+**powered by Petgabs**
 
 Public library of classroom mini apps and resources, published with GitHub Pages.
 
-Students browse, preview and download files. Teachers publish by dropping files
-into `apps/`. There is no server to run and no secret to manage.
+Students browse, preview and download files. Teachers sign in with the shared
+staff account and upload resources through a guided workflow; an administrator
+reviews each submission. There is no server to run and no secret to manage.
+
+---
+
+## Phase 2 — teacher upload workflow
+
+Teachers publish resources themselves, through the browser, without touching
+GitHub:
+
+| Step | What happens |
+| --- | --- |
+| 1. Sign in | Separate **Teacher Login** button (shared staff account, kept in `assets/js/config.js` as a salted SHA-256 digest). Teachers can upload but never delete. |
+| 2. Upload resource | Any supported classroom file — PDF, Word, Excel, PowerPoint or HTML, up to 8 MB. |
+| 3. Add structured metadata | Title, description, subject, grade/year, topic, resource type, language, owner, department, academic year, keywords, visibility, version, review date, licence, accessibility notes. Subject/year suggestions are offered automatically. |
+| 4. Automatic preview | A live card preview (exactly how the resource will appear) plus a sandboxed file preview for PDFs and HTML. |
+| 5. Submit for publication | The submission joins the review queue with status *pending*. |
+| 6. Administrator approves | One click in **Review Submissions**. Approved resources enter the library and are searchable immediately; declines record a reason for the teacher. |
+| 7. Publish everywhere | Optional: the administrator copies the generated `library.json` metadata and uploads the file to `apps/` on GitHub, making the resource available on every device. |
+
+**The file name is never the primary title.** `16G.pdf` tells a student far
+less than “Continuous Probability Distributions — Exercise 16G Solutions”, so
+the title is always curated — by the teacher or in `library.json` — and the
+file name is kept as secondary, searchable text.
+
+### Roles
+
+| | Teacher (`Teacher Login`) | Administrator (`Admin`) |
+| --- | --- | --- |
+| Upload resources with metadata | ✔ | ✔ |
+| Preview own submissions and their status | ✔ | ✔ |
+| Delete files or submissions | ✖ | ✔ |
+| Approve / decline submissions | ✖ | ✔ |
+| Dashboard, settings, repository sync | ✖ | ✔ |
+
+Both accounts are gated client-side (salted SHA-256 digests, no plaintext
+password in the repository). Real deletion still requires the administrator's
+GitHub sign-in — the teacher role has no destructive action at all.
+
+### Changing the teacher login
+
+The administrator rotates the shared teacher username and password in
+**Settings → Teacher Access** (admins only; teachers never see that screen):
+
+1. Enter a new username and password (confirmed twice, minimum 8 characters,
+   validated by `assets/js/lib/credentials.js`). Only a salted SHA-256 digest
+   is ever stored — never the plaintext password.
+2. **Update on this device** applies the change immediately in that browser:
+   the old login stops working there, the new one works straight away.
+3. To roll it out to **every** teacher, use **Copy config lines for GitHub**
+   (or the *Edit assets/js/config.js on GitHub* link), replace the
+   `TEACHER_USERNAME` / `TEACHER_PASSWORD_SHA256` lines, and commit. After the
+   next deploy the new login works everywhere; the device override keeps
+   matching, so nothing breaks.
+
+Until step 3, other devices continue to use the credentials published in
+`config.js`. **Restore repository default on this device** reverts the local
+override at any time.
+
+### Where the data lives (static-site limits)
+
+This is a GitHub Pages site, so there is no server-side account or database:
+
+* Submission **files** are stored as Blobs in the browser's IndexedDB
+  (`assets/js/lib/fileStore.js`), with a base64-in-localStorage fallback for
+  locked-down browsers. Metadata lives in localStorage.
+* Approved submissions are searchable **immediately on that device** and
+  survive reloads.
+* To reach *every* device, the administrator publishes through GitHub (the
+  “Copy metadata” / “Upload to GitHub” / “Done — published” buttons) — after
+  which the repository copy becomes canonical.
+
+### Visibility
+
+`public`, `school-only` and `class-only` are recorded as metadata, badged on
+the card and searchable. On a public static site they describe the intended
+audience rather than enforcing access control; if a resource must stay
+private, do not publish it to the repository.
 
 ---
 
@@ -15,7 +94,7 @@ into `apps/`. There is no server to run and no secret to manage.
 | Previews | In-browser preview for PDFs, mini apps and Office documents; richer resource cards |
 | Dependencies | Alpine, Lucide and Tailwind are bundled locally — no CDN at runtime |
 | States | Skeleton loaders, explicit error + retry, offline banner, service-worker caching |
-| Quality | 158 automated tests including axe-core accessibility checks |
+| Quality | Automated tests including axe-core accessibility checks (198 in total) |
 | Counters | Pluggable backend with a managed Postgres (Supabase) adapter |
 
 ---
@@ -27,10 +106,16 @@ npm install          # install build + test tooling
 npm run build        # vendor dependencies and compile CSS
 npm test             # unit, integration and accessibility tests
 npm run lint:js      # node --check on every first-party script
-npx serve .          # or any static server
+npm run dev          # serve the site on http://localhost:8080 (no caching)
 ```
 
 `npm run watch:css` rebuilds the stylesheet while you edit.
+
+Prefer `npm run dev` over `npx serve .` while working: the dev server sends
+`Cache-Control: no-store` on every response, so a refresh always shows your
+current files. Generic static servers omit cache headers, and browsers then
+heuristic-cache the scripts — which looks exactly like "my changes did not
+deploy".
 
 ### Committed build output
 
@@ -62,6 +147,7 @@ To override the guess, add an entry to `library.json`:
 ```json
 {
   "apps/Year 9 algebra.pdf": {
+    "title": "Year 9 Algebra — Practice Worksheet",
     "subject": "Mathematics",
     "years": [9],
     "tags": ["revision", "worksheet"],
@@ -73,6 +159,12 @@ To override the guess, add an entry to `library.json`:
 Keys are the repository path or the bare file name. Every field is optional;
 anything omitted falls back to inference. A curated `description` always wins
 over the placeholder generated during sync.
+
+The full curated vocabulary (any of which can also be produced automatically
+by the teacher workflow's “Copy metadata” button): `title`, `description`,
+`subject`, `years`, `tags`/`keywords`, `topic`, `resourceType`, `language`,
+`owner`, `department`, `academicYear`, `visibility` (`public` | `school` |
+`class`), `version`, `reviewDate`, `licence`, `accessibility`.
 
 ---
 

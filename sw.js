@@ -12,7 +12,7 @@
  *   Counter / GitHub API traffic    -> never cached.
  * ------------------------------------------------------------------------- */
 
-const VERSION = 'v1.2.0';
+const VERSION = 'v1.3.2';
 const SHELL_CACHE = `schoolcloud-shell-${VERSION}`;
 const DATA_CACHE = `schoolcloud-data-${VERSION}`;
 const FILE_CACHE = `schoolcloud-files-${VERSION}`;
@@ -29,6 +29,9 @@ const SHELL_ASSETS = [
   './assets/js/lib/counters.js',
   './assets/js/lib/format.js',
   './assets/js/lib/preview.js',
+  './assets/js/lib/submissions.js',
+  './assets/js/lib/fileStore.js',
+  './assets/js/lib/credentials.js',
   './assets/vendor/alpine.min.js',
   './assets/vendor/lucide.min.js'
 ];
@@ -122,6 +125,10 @@ self.addEventListener('fetch', event => {
 
   // Cross-origin requests (e.g. the Office viewer) go straight to the network.
   if (url.origin !== self.location.origin) return;
+
+  // Blob URLs (teacher submission previews and downloads created at runtime)
+  // must pass straight through — they cannot be cached and are short-lived.
+  if (url.protocol === 'blob:') return;
 
   if (request.mode === 'navigate') {
     event.respondWith((async () => {

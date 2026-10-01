@@ -21,11 +21,23 @@ export function searchableText(item) {
   const meta = item?.meta || {};
   return normalise([
     item?.name,
+    meta.title,
     item?.description,
     item?.fileName,
     item?.teacherName,
+    meta.owner,
     meta.subject,
     meta.kind,
+    meta.topic,
+    meta.resourceType,
+    meta.language,
+    meta.department,
+    meta.academicYear,
+    meta.licence,
+    meta.version,
+    meta.visibility,
+    meta.visibility === 'school' ? 'school only' : '',
+    meta.visibility === 'class' ? 'class only' : '',
     (meta.tags || []).join(' '),
     (meta.years || []).map(year => `year ${year} y${year} grade ${year}`).join(' ')
   ].filter(Boolean).join(' '));

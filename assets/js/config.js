@@ -8,7 +8,12 @@
 
 export const DEFAULT_GITHUB_REPO = 'Petgabs/BZFLS';
 
-export const MAX_LOCAL_APP_BYTES = 2 * 1024 * 1024;
+// Teacher uploads are stored as files in IndexedDB (not base64 text in
+// localStorage), so they can be larger than the browser-only mini apps.
+export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+// Fallback ceiling when IndexedDB is unavailable and the bytes would have to
+// live inside localStorage as a base64 data URL.
+export const MAX_INLINE_UPLOAD_BYTES = 2 * 1024 * 1024;
 
 export const SUPPORTED_FILE_PATTERN = /\.(?:html|pdf|docx?|xlsx?|pptx?)$/i;
 
@@ -49,7 +54,29 @@ export const ADMIN_PASSWORD_SHA256 =
   '80c8d57968c9c07428ad7a68c1b899076a4df66de6c381ed0c2e9efe5aceb262';
 export const ADMIN_SESSION_KEY = 'schoolcloud_admin_session';
 
+// --- Teacher ----------------------------------------------------------------
+//
+// A single shared staff account for uploading resources. Same scheme as the
+// administrator: only the salted SHA-256 digest ships to the browser. Teachers
+// can upload and describe resources but cannot delete anything — removal from
+// the public repository happens on github.com with the administrator's
+// account, and browser-side actions are guarded in code.
+export const TEACHER_USERNAME = 'hoc-teacher';
+export const TEACHER_HASH_SALT = 'BZFLS-SchoolCloud';
+export const TEACHER_PASSWORD_SHA256 =
+  'c793d667d6aa03c9001b2b8416f55ee3ade89c781d7cf1233e9d424ba1e70512';
+export const TEACHER_SESSION_KEY = 'schoolcloud_teacher_session';
+
+// Teacher submissions wait in a review queue until an administrator approves
+// them. Administrators publish their own uploads immediately.
+export const REQUIRE_TEACHER_APPROVAL = true;
+
 // --- Storage keys -----------------------------------------------------------
 export const APPS_STORAGE_KEY = 'schoolcloud_apps';
+export const SUBMISSIONS_STORAGE_KEY = 'schoolcloud_submissions';
+export const UPLOAD_PREFS_KEY = 'schoolcloud_upload_prefs';
+// Administrator's device-local override of the teacher login (username +
+// salted digest only, never the plaintext password). See lib/credentials.js.
+export const TEACHER_OVERRIDE_KEY = 'schoolcloud_teacher_override';
 export const GITHUB_CONFIG_KEY = 'schoolcloud_github_config';
 export const LIBRARY_CACHE_KEY = 'schoolcloud_library_cache';

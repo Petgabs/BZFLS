@@ -1,14 +1,19 @@
 // ---------------------------------------------------------------------------
-// BZFLS-SchoolCloud — Alpine component.
+// School Cloud System (powered by Petgabs) — Alpine component.
 //
 // Phase 1: search + facets, structured metadata, previews, local vendor
 // bundles, explicit loading/error/offline states, and counters backed by a
 // managed database.
+//
+// Phase 2: teacher workflow — shared teacher sign-in, structured uploads
+// with an automatic preview, a review queue, administrative approval and
+// instant searchability.
 // ---------------------------------------------------------------------------
 
 import {
   DEFAULT_GITHUB_REPO,
-  MAX_LOCAL_APP_BYTES,
+  MAX_UPLOAD_BYTES,
+  MAX_INLINE_UPLOAD_BYTES,
   SUPPORTED_FILE_PATTERN,
   COUNTER_CONFIG,
   VISITOR_COUNTER_KEY,
@@ -17,7 +22,15 @@ import {
   ADMIN_HASH_SALT,
   ADMIN_PASSWORD_SHA256,
   ADMIN_SESSION_KEY,
+  TEACHER_USERNAME,
+  TEACHER_HASH_SALT,
+  TEACHER_PASSWORD_SHA256,
+  TEACHER_SESSION_KEY,
+  TEACHER_OVERRIDE_KEY,
+  REQUIRE_TEACHER_APPROVAL,
   APPS_STORAGE_KEY,
+  SUBMISSIONS_STORAGE_KEY,
+  UPLOAD_PREFS_KEY,
   GITHUB_CONFIG_KEY,
   LIBRARY_CACHE_KEY
 } from './config.js';
@@ -29,7 +42,9 @@ import {
   titleFromFileName,
   kindOf,
   isMiniApp,
-  extensionOf
+  extensionOf,
+  visibilityLabel,
+  isReviewDue
 } from './lib/metadata.js';
 
 import {
@@ -49,13 +64,45 @@ import {
   formatCount,
   downloadLabel,
   formatDate,
+  formatBytes,
   formatYears,
   iconForExtension,
   subjectAccent,
-  describeFilters
+  describeFilters,
+  visibilityAccent,
+  submissionStatusAccent,
+  submissionStatusLabel
 } from './lib/format.js';
 
 import { canPreview, previewDescriptor } from './lib/preview.js';
+
+import {
+  validateTeacherCredentials,
+  teacherConfigSnippet
+} from './lib/credentials.js';
+
+import {
+  emptyDraft,
+  validateDraft,
+  submissionFromDraft,
+  libraryItemFromSubmission,
+  libraryJsonEntry,
+  submissionCounts,
+  parseYearsInput,
+  suggestSubject,
+  suggestYears,
+  titleHint,
+  FORM_OPTIONS,
+  academicYearOptions
+} from './lib/submissions.js';
+
+import {
+  fileStoreSupported,
+  putFile,
+  getFile,
+  deleteFile,
+  readAsDataUrl
+} from './lib/fileStore.js';
 
 // --- Admin hashing ----------------------------------------------------------
 
@@ -109,20 +156,44 @@ export function schoolCloud() {
     // --- Preview ------------------------------------------------------------
     preview: { open: false, item: null, descriptor: null },
 
-    // --- Admin --------------------------------------------------------------
-    isAdmin: false,
+    // --- Roles ---------------------------------------------------------------
+    // 'anonymous' | 'teacher' | 'admin'. Teachers share one staff account and
+    // can upload resources; only the administrator can approve, delete or
+    // change settings.
+    role: 'anonymous',
+    loginMode: 'teacher',
     showLogin: false,
     checkingLogin: false,
     loginError: '',
     loginForm: { username: '', password: '' },
+
+    // --- Upload (teacher + admin) ---------------------------------------------
     uploading: false,
     syncing: false,
     fileName: '',
     fileContent: '',
     fileReady: false,
     fileReadId: 0,
+    draftFile: null,          // { file, name, size, extension, objectUrl }
+    draft: emptyDraft(),
+    draftErrors: {},
+    submitting: false,
+    formOptions: FORM_OPTIONS,
+    academicYears: academicYearOptions(),
     githubConfig: { repo: DEFAULT_GITHUB_REPO },
-    newApp: { name: '', teacherName: '', description: '', subject: '', years: '', tags: '' },
+
+    // --- Submissions -----------------------------------------------------------
+    submissions: [],
+
+    // --- Teacher access (administrator) ---------------------------------------
+    // A device-local override of the shared teacher login, set from Settings.
+    // Stores only the username and salted SHA-256 digest — never a password.
+    teacherOverride: null,
+    teacherCredsOpen: false,
+    teacherCreds: { username: '', password: '', confirm: '' },
+    teacherCredsErrors: {},
+    savingTeacherCreds: false,
+    showTeacherPassword: false,
 
     // --- Stats --------------------------------------------------------------
     stats: {
@@ -137,8 +208,46 @@ export function schoolCloud() {
 
     // --- Derived collections ------------------------------------------------
 
+    get isAdmin() {
+      return this.role === 'admin';
+    },
+
+    get isTeacher() {
+      return this.role === 'teacher';
+    },
+
+    /** Signed-in staff: teachers and the administrator. */
+    get isStaff() {
+      return this.role === 'teacher' || this.role === 'admin';
+    },
+
     get decoratedApps() {
       return this.apps;
+    },
+
+    get submissionCounts() {
+      return submissionCounts(this.submissions);
+    },
+
+    get pendingSubmissions() {
+      return this.submissions.filter(record => record.status === 'pending');
+    },
+
+    get reviewedSubmissions() {
+      return this.submissions.filter(record => record.status !== 'pending');
+    },
+
+    /** The teacher login in force on this device (override or repository). */
+    get effectiveTeacherUsername() {
+      return this.teacherOverride?.username || TEACHER_USERNAME;
+    },
+
+    get effectiveTeacherDigest() {
+      return this.teacherOverride?.digest || TEACHER_PASSWORD_SHA256;
+    },
+
+    get teacherOverrideActive() {
+      return Boolean(this.teacherOverride);
     },
 
     get filteredApps() {
@@ -198,7 +307,9 @@ export function schoolCloud() {
     },
 
     get localAppCount() {
-      return this.apps.filter(app => app.source !== 'github').length;
+      // Browser-only mini app drafts; approved teacher submissions are
+      // counted separately in the review queue.
+      return this.apps.filter(app => app.source !== 'github' && !app.submissionId).length;
     },
 
     get cloudAppCount() {
@@ -215,10 +326,15 @@ export function schoolCloud() {
       });
       globalThis.addEventListener?.('offline', () => { this.offline = true; });
 
+      // Must run before the session check: a rotated teacher login replaces
+      // the repository credentials on this device.
+      this.loadTeacherOverride();
+
       try {
-        this.isAdmin = sessionStorage.getItem(ADMIN_SESSION_KEY) === ADMIN_PASSWORD_SHA256;
+        if (sessionStorage.getItem(ADMIN_SESSION_KEY) === ADMIN_PASSWORD_SHA256) this.role = 'admin';
+        else if (sessionStorage.getItem(TEACHER_SESSION_KEY) === this.effectiveTeacherDigest) this.role = 'teacher';
       } catch (error) {
-        console.warn('Session storage unavailable; admin must sign in each visit.', error);
+        console.warn('Session storage unavailable; staff must sign in each visit.', error);
       }
 
       try {
@@ -228,6 +344,9 @@ export function schoolCloud() {
         console.warn('Ignoring invalid saved app data.', error);
         localStorage.removeItem(APPS_STORAGE_KEY);
       }
+
+      this.loadSubmissions();
+      this.loadUploadPrefs();
 
       try {
         const savedConfig = JSON.parse(localStorage.getItem(GITHUB_CONFIG_KEY) || '{}');
@@ -258,12 +377,21 @@ export function schoolCloud() {
 
     // --- Metadata -----------------------------------------------------------
 
-    /** Attach a `meta` block to a raw app record. */
-    decorate(app) {
+    /**
+     * Attach a `meta` block to a raw app record.
+     *
+     * @param {object} app              Raw app/resource record.
+     * @param {object} [explicitOverride] Curated fields to use instead of
+     *        looking the item up in library.json (used for submissions).
+     */
+    decorate(app, explicitOverride) {
       if (!app || typeof app !== 'object') return app;
-      const overrides = findOverride(this.overrides, app);
+      const overrides = explicitOverride || findOverride(this.overrides, app);
       return {
         ...app,
+        // A curated title is the resource's real name; the file name is only
+        // ever a fallback ("16G.pdf" says far less than a proper title).
+        name: overrides.title || app.name || titleFromFileName(app.fileName),
         // A curated description always wins: the description generated during
         // sync ("PDF document shared through the public repository") is only a
         // placeholder, so `app.description || overrides.description` would
@@ -339,19 +467,54 @@ export function schoolCloud() {
     // --- Previews -----------------------------------------------------------
 
     canPreview(item) {
-      return canPreview(item);
+      if (!item) return false;
+      // Approved submissions keep their bytes in the file store; they are
+      // previewable whenever the file type supports it.
+      const hydrated = item.submissionId && !item.downloadUrl && !item.content
+        ? { ...item, downloadUrl: `blob:${item.submissionId}` }
+        : item;
+      return canPreview(hydrated);
     },
 
-    openPreview(item) {
-      const descriptor = previewDescriptor(item);
+    async openPreview(item) {
       this.errors.preview = '';
 
+      /** Open the modal straight into its error state. */
+      const openWithError = (message) => {
+        this.errors.preview = message;
+        this.preview = { open: true, item, descriptor: null };
+        this.loading.preview = false;
+        this.$nextTick(() => {
+          refreshIcons();
+          document.getElementById('preview-close')?.focus();
+        });
+      };
+
+      // Fetch the stored bytes for submission-backed items on demand.
+      if (item.submissionId && !item.downloadUrl && !item.content) {
+        const record = this.submissions.find(entry => entry.id === item.submissionId);
+        const url = await this.submissionObjectUrl(record);
+        if (!url) {
+          openWithError('The stored file is no longer available on this device.');
+          return;
+        }
+        item = { ...item, downloadUrl: url };
+      }
+
+      const descriptor = previewDescriptor(item);
+
       if (!descriptor) {
-        this.errors.preview = 'This file type cannot be previewed in the browser.';
+        openWithError('This file type cannot be previewed in the browser.');
+        return;
+      }
+      if (descriptor.mode === 'office' && !/^https?:/i.test(item.downloadUrl || '')) {
+        // Microsoft's viewer can only reach publicly hosted files; local
+        // submissions must be downloaded to be checked.
+        openWithError('Word, Excel and PowerPoint files are previewed online once published. Download the file to check its contents.');
         return;
       }
       if (descriptor.requiresPublicUrl && this.offline) {
-        this.errors.preview = 'Office previews need an internet connection. Download the file instead.';
+        openWithError('Office previews need an internet connection. Download the file instead.');
         return;
       }
 
@@ -478,7 +641,13 @@ export function schoolCloud() {
     formatCount,
     formatDate,
     formatYears,
+    formatBytes,
     subjectAccent,
+    visibilityLabel,
+    visibilityAccent,
+    submissionStatusAccent,
+    submissionStatusLabel,
+    isReviewDue,
 
     downloadLabel(item) {
       return downloadLabel(this.downloadsOf(item));
@@ -667,93 +836,259 @@ export function schoolCloud() {
       }
     },
 
-    // --- Uploads ------------------------------------------------------------
+    // --- Uploads (teacher + admin) -------------------------------------------
+    //
+    // Teachers choose a file, describe it with structured metadata, see an
+    // automatic preview, then submit it for publication. Administrator
+    // uploads skip the review queue.
+
+    openUpload() {
+      if (!this.requireStaff()) return;
+      this.currentView = 'upload';
+      this.$nextTick(() => refreshIcons());
+    },
+
+    clearDraftFile() {
+      if (this.draftFile?.objectUrl) {
+        try { URL.revokeObjectURL(this.draftFile.objectUrl); } catch { /* already revoked */ }
+      }
+      this.draftFile = null;
+    },
 
     handleFileChange(event) {
-      const file = event.target.files[0];
-      const readId = ++this.fileReadId;
-      this.fileName = '';
-      this.fileContent = '';
-      this.fileReady = false;
+      this.ingestFile(event.target.files ? event.target.files[0] : null);
+      // Allow picking the same file again after an error message.
+      event.target.value = '';
+    },
+
+    handleFileDrop(event) {
+      const file = event.dataTransfer?.files?.[0];
+      if (file) this.ingestFile(file);
+    },
+
+    ingestFile(file) {
+      this.clearDraftFile();
+      this.draftErrors = { ...this.draftErrors, file: '' };
 
       if (!file) return;
 
-      if (!/\.html$/i.test(file.name)) {
-        event.target.value = '';
-        alert('Please select an HTML file.');
+      if (!SUPPORTED_FILE_PATTERN.test(file.name)) {
+        this.draftErrors = {
+          ...this.draftErrors,
+          file: 'Unsupported file type. Supported: HTML, PDF, Word, Excel and PowerPoint files.'
+        };
         return;
       }
-      if (file.size > MAX_LOCAL_APP_BYTES) {
-        event.target.value = '';
-        alert('The HTML file must be 2 MB or smaller for browser storage.');
+      if (file.size > MAX_UPLOAD_BYTES) {
+        this.draftErrors = {
+          ...this.draftErrors,
+          file: `That file is ${(file.size / (1024 * 1024)).toFixed(1)} MB. Uploads are limited to ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))} MB — ask the administrator to publish larger files through GitHub.`
+        };
         return;
       }
 
-      this.fileName = file.name;
-      const reader = new FileReader();
-      reader.onload = loadEvent => {
-        if (readId !== this.fileReadId) return;
-        this.fileContent = String(loadEvent.target.result || '');
-        this.fileReady = true;
+      this.draftFile = {
+        file,
+        name: file.name,
+        size: file.size,
+        extension: extensionOf(file.name),
+        // Old embedded browsers may lack createObjectURL; the card preview
+        // still works and the file remains uploadable.
+        objectUrl: typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : ''
       };
-      reader.onerror = () => {
-        if (readId !== this.fileReadId) return;
-        this.fileName = '';
-        this.fileContent = '';
-        this.fileReady = false;
-        alert('The selected file could not be read.');
-      };
-      reader.readAsText(file);
+      this.$nextTick(() => refreshIcons());
     },
 
-    async handleUpload() {
-      if (!this.requireAdmin()) return;
-      if (!this.fileReady || !this.fileName || !this.fileContent) {
-        alert('Wait for a valid HTML file to finish loading.');
+    /** Live file preview inside the upload form (PDFs and HTML only). */
+    get draftFilePreview() {
+      if (!this.draftFile || !this.draftFile.objectUrl) return null;
+      const extension = this.draftFile.extension;
+      const label = `Automatic preview of ${this.draft.title || this.draftFile.name}`;
+      if (extension === 'html' || extension === 'htm') {
+        return {
+          mode: 'iframe',
+          src: this.draftFile.objectUrl,
+          // Third-party HTML is never granted same-origin.
+          sandbox: 'allow-scripts allow-forms allow-popups',
+          label
+        };
+      }
+      if (extension === 'pdf') {
+        return { mode: 'iframe', src: `${this.draftFile.objectUrl}#view=FitH`, sandbox: 'allow-scripts allow-same-origin allow-popups', label };
+      }
+      return null;
+    },
+
+    /** Metadata block for the live card preview, exactly as it will appear. */
+    get draftCardMeta() {
+      return buildMetadata({
+        fileName: this.draftFile?.name || '',
+        name: this.draft.title,
+        description: this.draft.description,
+        teacherName: this.draft.owner,
+        subject: this.draft.subject,
+        years: parseYearsInput(this.draft.years),
+        keywords: this.draft.keywords,
+        topic: this.draft.topic,
+        resourceType: this.draft.resourceType,
+        language: this.draft.language,
+        department: this.draft.department,
+        academicYear: this.draft.academicYear,
+        visibility: this.draft.visibility,
+        version: this.draft.version,
+        reviewDate: this.draft.reviewDate,
+        licence: this.draft.licence,
+        accessibility: this.draft.accessibility
+      }, {});
+    },
+
+    suggestedSubject() {
+      return suggestSubject(this.draft);
+    },
+
+    suggestedYearsLabel() {
+      const years = suggestYears(this.draft);
+      return years.length ? formatYears(years) : '';
+    },
+
+    applySuggestedSubject() {
+      const subject = suggestSubject(this.draft);
+      if (subject) this.draft.subject = subject;
+    },
+
+    applySuggestedYears() {
+      const years = suggestYears(this.draft);
+      if (years.length) this.draft.years = years.join(', ');
+    },
+
+    titlePlaceholder() {
+      if (this.draftFile) {
+        // Suggest building on the file name only when it carries real words;
+        // a bare code like "16G" would make a useless suggestion.
+        const hint = titleHint(this.draftFile.name);
+        if (hint.length >= 4 && /[a-z]{3}/i.test(hint)) {
+          return `e.g. “${hint} — solutions”`;
+        }
+      }
+      return 'e.g. Continuous Probability Distributions — Exercise 16G Solutions';
+    },
+
+    loadUploadPrefs() {
+      try {
+        const prefs = JSON.parse(localStorage.getItem(UPLOAD_PREFS_KEY) || '{}');
+        if (prefs.owner) this.draft.owner = String(prefs.owner);
+        if (prefs.department) this.draft.department = String(prefs.department);
+      } catch {
+        /* Preferences are optional. */
+      }
+    },
+
+    rememberUploadPrefs() {
+      try {
+        localStorage.setItem(UPLOAD_PREFS_KEY, JSON.stringify({
+          owner: this.draft.owner,
+          department: this.draft.department
+        }));
+      } catch {
+        /* Preferences are optional. */
+      }
+    },
+
+    resetDraft() {
+      this.clearDraftFile();
+      this.draft = emptyDraft();
+      this.loadUploadPrefs();
+      this.draftErrors = {};
+      this.fileReadId += 1;
+      try { this.$refs.uploadForm?.reset(); } catch { /* no form mounted */ }
+    },
+
+    /**
+     * Submit the draft for publication. Teachers' submissions join the review
+     * queue; the administrator's own uploads are published immediately.
+     */
+    async submitResource() {
+      if (!this.requireStaff()) return;
+
+      this.draftErrors = validateDraft(
+        this.draft,
+        this.draftFile ? { name: this.draftFile.name, size: this.draftFile.size } : null,
+        { maxBytes: MAX_UPLOAD_BYTES }
+      );
+      if (Object.values(this.draftErrors).some(Boolean)) {
+        alert('Please fix the highlighted fields before submitting.');
         return;
       }
 
-      this.uploading = true;
-      const years = String(this.newApp.years || '')
-        .split(/[,\s&]+/)
-        .map(Number)
-        .filter(year => Number.isFinite(year) && year >= 1 && year <= 13);
-
-      const app = this.decorate({
-        id: globalThis.crypto?.randomUUID?.() || Date.now().toString(),
-        name: this.newApp.name.trim(),
-        teacherName: this.newApp.teacherName.trim(),
-        description: this.newApp.description.trim(),
-        fileName: this.fileName,
-        content: this.fileContent,
-        createdAt: new Date().toISOString(),
-        source: 'local'
-      });
-
-      // Explicit metadata from the upload form wins over inference.
-      if (this.newApp.subject) app.meta.subject = this.newApp.subject;
-      if (years.length) app.meta.years = years;
-      if (this.newApp.tags) {
-        app.meta.tags = this.newApp.tags.split(',').map(tag => tag.trim().toLowerCase()).filter(Boolean);
-      }
+      this.submitting = true;
+      const id = globalThis.crypto?.randomUUID?.() ||
+        `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
       try {
-        this.apps.unshift(app);
-        this.saveApps();
+        // 1. Store the bytes (IndexedDB, with an inline base64 fallback).
+        let storage = null;
+        let inlineData = null;
 
-        this.newApp = { name: '', teacherName: '', description: '', subject: '', years: '', tags: '' };
-        this.fileName = '';
-        this.fileContent = '';
-        this.fileReady = false;
-        this.fileReadId += 1;
-        this.$refs.uploadForm.reset();
-        this.currentView = 'library';
-        alert('App saved to this browser. Use “Upload File Through GitHub” to share it publicly.');
-      } catch (error) {
-        this.apps = this.apps.filter(item => item.id !== app.id);
-        alert('The app could not be saved. Browser storage may be full.');
+        if (fileStoreSupported()) {
+          try {
+            await putFile(id, this.draftFile.file);
+            storage = 'idb';
+          } catch (error) {
+            console.warn('The file store is unavailable; falling back to inline storage.', error);
+          }
+        }
+        if (!storage) {
+          if (this.draftFile.size > MAX_INLINE_UPLOAD_BYTES) {
+            this.draftErrors = {
+              ...this.draftErrors,
+              file: 'This browser cannot store files larger than 2 MB in fallback mode. Try another browser, or ask the administrator to publish the file through GitHub.'
+            };
+            return;
+          }
+          inlineData = await readAsDataUrl(this.draftFile.file);
+          if (!inlineData) {
+            this.draftErrors = { ...this.draftErrors, file: 'The selected file could not be read.' };
+            return;
+          }
+          storage = 'inline';
+        }
+
+        // 2. Build the submission record.
+        const needsReview = REQUIRE_TEACHER_APPROVAL && !this.isAdmin;
+        const record = submissionFromDraft(
+          this.draft,
+          { name: this.draftFile.name, size: this.draftFile.size, type: this.draftFile.file.type },
+          { id, submittedBy: this.role, status: needsReview ? 'pending' : 'approved', storage, inlineData }
+        );
+
+        this.submissions.unshift(record);
+        if (!this.saveSubmissions()) {
+          // Roll back so the teacher is not told the upload succeeded.
+          this.submissions = this.submissions.filter(item => item.id !== id);
+          if (storage === 'idb') await deleteFile(id);
+          alert('The submission could not be saved: browser storage is full. Remove old submissions from this device or use a smaller file.');
+          return;
+        }
+
+        // 3. Publish immediately when no review is required.
+        if (record.status === 'approved') {
+          this.addApprovedToLibrary(record);
+          this.saveApps();
+        }
+
+        this.rememberUploadPrefs();
+        this.resetDraft();
+
+        if (record.status === 'approved') {
+          this.currentView = 'library';
+          alert(`Published. “${record.title}” is now in the library and searchable immediately.`);
+        } else {
+          this.currentView = 'submissions';
+          alert(`Submitted for review. “${record.title}” will appear in the public library once an administrator approves it. You can track its status on this page.`);
+        }
       } finally {
-        this.uploading = false;
+        this.submitting = false;
+        this.$nextTick(() => refreshIcons());
       }
     },
 
@@ -765,25 +1100,191 @@ export function schoolCloud() {
       }
     },
 
+    // --- Submissions & review ------------------------------------------------
+
+    loadSubmissions() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(SUBMISSIONS_STORAGE_KEY) || '[]');
+        if (Array.isArray(saved)) this.submissions = saved;
+      } catch (error) {
+        console.warn('Ignoring invalid submission data.', error);
+        localStorage.removeItem(SUBMISSIONS_STORAGE_KEY);
+      }
+      // Approved submissions become searchable library items immediately.
+      for (const record of this.submissions) {
+        if (record.status === 'approved') this.addApprovedToLibrary(record);
+      }
+    },
+
+    /** Returns false when the data could not be persisted. */
+    saveSubmissions() {
+      try {
+        localStorage.setItem(SUBMISSIONS_STORAGE_KEY, JSON.stringify(this.submissions));
+        return true;
+      } catch (error) {
+        console.warn('Could not save the submissions to this browser.', error);
+        return false;
+      }
+    },
+
+    openSubmissions() {
+      if (!this.requireStaff()) return;
+      this.currentView = 'submissions';
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /** Add an approved submission to the library (once, and never over GitHub). */
+    addApprovedToLibrary(record) {
+      if (record.published) return; // the public repository copy is canonical
+      if (this.apps.some(app => app.submissionId === record.id)) return;
+      this.apps.unshift(libraryItemFromSubmission(record));
+    },
+
+    approveSubmission(id) {
+      if (!this.requireAdmin()) return;
+      const record = this.submissions.find(item => item.id === id);
+      if (!record || record.status !== 'pending') return;
+
+      record.status = 'approved';
+      record.reviewedAt = new Date().toISOString();
+      record.reviewedBy = 'administrator';
+      this.addApprovedToLibrary(record);
+      this.saveSubmissions();
+      this.saveApps();
+      this.$nextTick(() => refreshIcons());
+
+      alert(`Approved. “${record.title}” is now in the library and searchable immediately.\n\nTo make it appear on every device, upload the file to the apps folder on GitHub and paste the copied metadata into library.json (use “Copy metadata” next to the submission).`);
+    },
+
+    declineSubmission(id) {
+      if (!this.requireAdmin()) return;
+      const record = this.submissions.find(item => item.id === id);
+      if (!record || record.status === 'rejected') return;
+
+      const reason = prompt(`Reason for declining “${record.title}” (shown to the teacher):`, '');
+      if (reason === null) return;
+
+      record.status = 'rejected';
+      record.reviewNote = reason.trim();
+      record.reviewedAt = new Date().toISOString();
+      record.reviewedBy = 'administrator';
+      this.apps = this.apps.filter(app => app.submissionId !== record.id);
+      this.saveSubmissions();
+      this.saveApps();
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /** Permanently remove a submission and its stored file (admin only). */
+    async deleteSubmission(id) {
+      if (!this.requireAdmin()) return;
+      const record = this.submissions.find(item => item.id === id);
+      if (!record) return;
+      if (!confirm(`Permanently remove “${record.title}”? The stored file will be deleted from this device.`)) return;
+
+      this.submissions = this.submissions.filter(item => item.id !== id);
+      this.apps = this.apps.filter(app => app.submissionId !== id);
+      await deleteFile(id);
+      this.saveSubmissions();
+      this.saveApps();
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /** Record that a submission has been published to the public repository. */
+    markPublished(id) {
+      if (!this.requireAdmin()) return;
+      const record = this.submissions.find(item => item.id === id);
+      if (!record || record.published) return;
+      record.published = true;
+      this.apps = this.apps.filter(app => app.submissionId !== id);
+      this.saveSubmissions();
+      this.saveApps();
+      this.syncFromGithub({ silent: true });
+    },
+
+    /** Blob URL for a submission's stored bytes, or '' when unavailable. */
+    async submissionObjectUrl(record) {
+      if (!record) return '';
+      if (typeof URL.createObjectURL !== 'function') return '';
+      if (record.storage === 'idb') {
+        const blob = await getFile(record.id);
+        return blob ? URL.createObjectURL(blob) : '';
+      }
+      if (record.storage === 'inline' && record.inlineData) {
+        try {
+          const response = await fetch(record.inlineData);
+          return URL.createObjectURL(await response.blob());
+        } catch {
+          return '';
+        }
+      }
+      return '';
+    },
+
+    /** Preview a submission straight from the review queue. */
+    async openSubmissionPreview(record) {
+      const item = libraryItemFromSubmission(record);
+      await this.openPreview(item);
+    },
+
+    /** Download a submission's file straight from the review queue. */
+    async downloadSubmission(record) {
+      await this.downloadApp(libraryItemFromSubmission(record));
+    },
+
+    viewInLibrary(record) {
+      this.currentView = 'library';
+      this.filters = { ...this.filters, query: record.title };
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /** Copy a ready-to-paste library.json entry for publishing a submission. */
+    async copySubmissionMetadata(record) {
+      const snippet = libraryJsonEntry(record);
+      const copied = await this.copyToClipboard(snippet);
+      if (copied) {
+        alert('Metadata copied to the clipboard.\n\n1. Upload the file to the apps folder on GitHub.\n2. Paste this entry into library.json and commit.\nThe resource then appears with its full details on every device.');
+      } else {
+        alert('Automatic copy is blocked in this browser. Copy the metadata from the dialog that follows.');
+        prompt('library.json entry:', snippet);
+      }
+    },
+
     async downloadApp(app) {
+      let target = app;
+      let temporaryUrl = '';
+
+      // Approved submissions keep their bytes in the file store.
+      if (app.submissionId && !app.content && !app.downloadUrl) {
+        const record = this.submissions.find(item => item.id === app.submissionId);
+        const url = await this.submissionObjectUrl(record);
+        if (!url) {
+          alert('The stored file is no longer available on this device. Ask the owner to upload it again.');
+          return;
+        }
+        target = { ...app, downloadUrl: url };
+        temporaryUrl = url;
+      }
+
       let blob = null;
 
-      if (typeof app.content === 'string' && app.content) {
-        blob = new Blob([app.content], { type: 'text/html' });
-      } else if (app.downloadUrl) {
+      if (typeof target.content === 'string' && target.content) {
+        blob = new Blob([target.content], { type: 'text/html' });
+      } else if (target.downloadUrl) {
         try {
-          const response = await fetch(app.downloadUrl, { cache: 'no-store' });
+          const response = await fetch(target.downloadUrl, { cache: 'no-store' });
           if (!response.ok) throw new Error(`Download returned ${response.status}`);
           // Keep binary resources byte-for-byte intact.
           blob = await response.blob();
         } catch (error) {
-          alert('Failed to download from GitHub: ' + error.message);
+          alert('Failed to download the file: ' + error.message);
+          if (temporaryUrl) URL.revokeObjectURL(temporaryUrl);
           return;
         }
       }
 
       if (!blob) {
         alert('No downloadable content is available for this file.');
+        if (temporaryUrl) URL.revokeObjectURL(temporaryUrl);
         return;
       }
 
@@ -795,40 +1296,75 @@ export function schoolCloud() {
       anchor.click();
       document.body.removeChild(anchor);
       URL.revokeObjectURL(url);
+      if (temporaryUrl) URL.revokeObjectURL(temporaryUrl);
 
       this.recordDownload(app);
     },
 
     deleteApp(id) {
       if (!this.requireAdmin()) return;
-      if (confirm('Remove this browser-only app?')) {
-        this.apps = this.apps.filter(app => app.id !== id);
-        this.saveApps();
+      const app = this.apps.find(item => item.id === id);
+      if (!confirm('Remove this browser-only app?')) return;
+      this.apps = this.apps.filter(item => item.id !== id);
+      // Removing a published submission from the library sends it back to
+      // the review queue with a note, so the decision is traceable.
+      if (app?.submissionId) {
+        const record = this.submissions.find(item => item.id === app.submissionId);
+        if (record) {
+          record.status = 'rejected';
+          record.reviewNote = 'Removed from the library by the administrator.';
+          record.reviewedAt = new Date().toISOString();
+          record.reviewedBy = 'administrator';
+          this.saveSubmissions();
+        }
       }
+      this.saveApps();
     },
 
-    clearData() {
+    async clearData() {
       if (!this.requireAdmin()) return;
-      if (confirm('Clear cached apps and reset the public repository setting?')) {
-        localStorage.removeItem(APPS_STORAGE_KEY);
-        localStorage.removeItem(GITHUB_CONFIG_KEY);
-        localStorage.removeItem(LIBRARY_CACHE_KEY);
-        this.apps = [];
-        this.githubConfig = { repo: DEFAULT_GITHUB_REPO };
-        this.currentView = 'library';
+      if (!confirm('Clear cached apps, submissions and stored upload files from this device, and reset the repository setting?')) {
+        return;
       }
+      for (const record of this.submissions) await deleteFile(record.id);
+      localStorage.removeItem(APPS_STORAGE_KEY);
+      localStorage.removeItem(SUBMISSIONS_STORAGE_KEY);
+      localStorage.removeItem(UPLOAD_PREFS_KEY);
+      localStorage.removeItem(GITHUB_CONFIG_KEY);
+      localStorage.removeItem(LIBRARY_CACHE_KEY);
+      this.apps = [];
+      this.submissions = [];
+      this.githubConfig = { repo: DEFAULT_GITHUB_REPO };
+      this.currentView = 'library';
+      this.$nextTick(() => refreshIcons());
     },
 
-    // --- Admin session ------------------------------------------------------
+    // --- Sign-in (teacher + admin) -------------------------------------------
 
-    openLogin() {
+    /**
+     * Open the sign-in modal. 'teacher' and 'admin' are separate accounts:
+     * teachers can upload and describe resources; only the administrator can
+     * approve, delete or change settings.
+     */
+    openLogin(mode = 'teacher') {
+      this.loginMode = mode === 'admin' ? 'admin' : 'teacher';
       this.loginError = '';
       this.loginForm = { username: '', password: '' };
       this.showLogin = true;
       this.$nextTick(() => {
         refreshIcons();
-        document.getElementById('admin-user')?.focus();
+        document.getElementById('login-user')?.focus();
       });
+    },
+
+    adoptRole(role) {
+      this.role = role;
+      this.showLogin = false;
+      this.loginForm = { username: '', password: '' };
+      if (role === 'teacher' && ['dashboard', 'settings'].includes(this.currentView)) {
+        this.currentView = 'library';
+      }
+      this.$nextTick(() => refreshIcons());
     },
 
     async login() {
@@ -838,22 +1374,38 @@ export function schoolCloud() {
 
       try {
         const username = this.loginForm.username.trim();
-        const digest = await sha256Hex(`${ADMIN_HASH_SALT}::${username}::${this.loginForm.password}`);
+        const password = this.loginForm.password;
 
-        if (username !== ADMIN_USERNAME || !digestsMatch(digest, ADMIN_PASSWORD_SHA256)) {
-          this.loginError = 'Incorrect username or password.';
-          return;
+        if (this.loginMode === 'admin') {
+          const digest = await sha256Hex(`${ADMIN_HASH_SALT}::${username}::${password}`);
+          if (username !== ADMIN_USERNAME || !digestsMatch(digest, ADMIN_PASSWORD_SHA256)) {
+            this.loginError = 'Incorrect administrator username or password.';
+            return;
+          }
+          this.adoptRole('admin');
+          try {
+            sessionStorage.setItem(ADMIN_SESSION_KEY, ADMIN_PASSWORD_SHA256);
+            sessionStorage.removeItem(TEACHER_SESSION_KEY);
+          } catch (error) {
+            console.warn('Could not persist the administrator session.', error);
+          }
+        } else {
+          // The effective credentials come from the administrator's override
+          // (Settings → Teacher Access) when one is set on this device,
+          // otherwise from the repository defaults in config.js.
+          const digest = await sha256Hex(`${TEACHER_HASH_SALT}::${username}::${password}`);
+          if (username !== this.effectiveTeacherUsername || !digestsMatch(digest, this.effectiveTeacherDigest)) {
+            this.loginError = 'Incorrect teacher username or password.';
+            return;
+          }
+          this.adoptRole('teacher');
+          try {
+            sessionStorage.setItem(TEACHER_SESSION_KEY, this.effectiveTeacherDigest);
+            sessionStorage.removeItem(ADMIN_SESSION_KEY);
+          } catch (error) {
+            console.warn('Could not persist the teacher session.', error);
+          }
         }
-
-        this.isAdmin = true;
-        this.showLogin = false;
-        this.loginForm = { username: '', password: '' };
-        try {
-          sessionStorage.setItem(ADMIN_SESSION_KEY, ADMIN_PASSWORD_SHA256);
-        } catch (error) {
-          console.warn('Could not persist the admin session.', error);
-        }
-        this.$nextTick(() => refreshIcons());
       } catch (error) {
         this.loginError = error.message;
       } finally {
@@ -862,20 +1414,163 @@ export function schoolCloud() {
     },
 
     logout() {
-      this.isAdmin = false;
+      this.role = 'anonymous';
       this.currentView = 'library';
       try {
         sessionStorage.removeItem(ADMIN_SESSION_KEY);
+        sessionStorage.removeItem(TEACHER_SESSION_KEY);
       } catch (error) {
-        console.warn('Could not clear the admin session.', error);
+        console.warn('Could not clear the sign-in session.', error);
       }
       this.$nextTick(() => refreshIcons());
     },
 
     requireAdmin() {
       if (this.isAdmin) return true;
-      this.openLogin();
+      this.openLogin('admin');
       return false;
+    },
+
+    requireStaff() {
+      if (this.isStaff) return true;
+      this.openLogin('teacher');
+      return false;
+    },
+
+    // --- Teacher access (administrator) ---------------------------------------
+    //
+    // The shared teacher login can be rotated from Settings. The override
+    // applies immediately on this device; publishing the generated config
+    // lines to GitHub applies it to every device after the next deploy.
+
+    loadTeacherOverride() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(TEACHER_OVERRIDE_KEY) || 'null');
+        this.teacherOverride = saved && typeof saved === 'object' && saved.username && saved.digest
+          ? saved
+          : null;
+      } catch {
+        this.teacherOverride = null;
+      }
+    },
+
+    openTeacherCreds() {
+      if (!this.requireAdmin()) return;
+      this.teacherCredsOpen = true;
+      this.teacherCredsErrors = {};
+      // Prefill the current username so a password-only change is easy.
+      this.teacherCreds = { username: this.effectiveTeacherUsername, password: '', confirm: '' };
+      this.$nextTick(() => {
+        refreshIcons();
+        document.getElementById('teacher-new-user')?.focus();
+      });
+    },
+
+    cancelTeacherCreds() {
+      this.teacherCredsOpen = false;
+      this.teacherCreds = { username: '', password: '', confirm: '' };
+      this.teacherCredsErrors = {};
+      this.showTeacherPassword = false;
+      this.$nextTick(() => refreshIcons());
+    },
+
+    toggleTeacherPassword() {
+      this.showTeacherPassword = !this.showTeacherPassword;
+      this.$nextTick(() => refreshIcons());
+    },
+
+    async saveTeacherCredentials() {
+      if (!this.requireAdmin()) return;
+
+      this.teacherCredsErrors = validateTeacherCredentials(this.teacherCreds);
+      if (Object.values(this.teacherCredsErrors).some(Boolean)) return;
+
+      this.savingTeacherCreds = true;
+      try {
+        const username = this.teacherCreds.username.trim();
+        // Same scheme as config.js: salted SHA-256, never plaintext.
+        const digest = await sha256Hex(`${TEACHER_HASH_SALT}::${username}::${this.teacherCreds.password}`);
+
+        const override = {
+          username,
+          digest,
+          changedAt: new Date().toISOString(),
+          changedBy: 'administrator'
+        };
+        localStorage.setItem(TEACHER_OVERRIDE_KEY, JSON.stringify(override));
+        this.teacherOverride = override;
+      } catch (error) {
+        console.warn('Could not save the teacher credential override.', error);
+        alert('The change could not be saved in this browser.');
+        return;
+      } finally {
+        this.savingTeacherCreds = false;
+      }
+
+      // A teacher session on this device was signed in under the old
+      // credentials — sign it out so the new login takes effect.
+      try { sessionStorage.removeItem(TEACHER_SESSION_KEY); } catch { /* optional */ }
+
+      this.cancelTeacherCreds();
+      alert(`Teacher login updated on this device.\n\nUsername: ${this.effectiveTeacherUsername}\n\nThis applies to this browser only. To give every teacher the new login, copy the config lines below and paste them into assets/js/config.js on GitHub, then commit — the change applies site-wide once the site redeploys.`);
+      this.$nextTick(() => refreshIcons());
+    },
+
+    resetTeacherCredentials() {
+      if (!this.requireAdmin()) return;
+      if (!this.teacherOverride) return;
+      if (!confirm('Restore the repository teacher username and password on this device? Teachers will sign in with the credentials published in assets/js/config.js again.')) return;
+
+      localStorage.removeItem(TEACHER_OVERRIDE_KEY);
+      this.teacherOverride = null;
+      this.cancelTeacherCreds();
+      try { sessionStorage.removeItem(TEACHER_SESSION_KEY); } catch { /* optional */ }
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /** The exact lines to paste into assets/js/config.js. */
+    teacherConfigText() {
+      return teacherConfigSnippet(this.effectiveTeacherUsername, this.effectiveTeacherDigest);
+    },
+
+    async copyTeacherConfig() {
+      if (!this.requireAdmin()) return;
+      const copied = await this.copyToClipboard(this.teacherConfigText());
+      if (copied) {
+        alert('Config lines copied to the clipboard.\n\n1. Open assets/js/config.js on GitHub (link beside this button).\n2. Replace the TEACHER_USERNAME and TEACHER_PASSWORD_SHA256 lines with the copied ones.\n3. Commit — once the site redeploys, the new teacher login works on every device.');
+      } else {
+        alert('Automatic copy is blocked in this browser. Copy the lines from the dialog that follows.');
+        prompt('assets/js/config.js — teacher credentials:', this.teacherConfigText());
+      }
+    },
+
+    githubEditConfigUrl() {
+      const repo = this.normalizeRepository(this.githubConfig.repo) || DEFAULT_GITHUB_REPO;
+      const safeRepo = repo.split('/').map(encodeURIComponent).join('/');
+      return `https://github.com/${safeRepo}/edit/main/assets/js/config.js`;
+    },
+
+    /** Clipboard with a fallback for browsers without the async API. */
+    async copyToClipboard(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        try {
+          const helper = document.createElement('textarea');
+          helper.value = text;
+          helper.setAttribute('readonly', '');
+          helper.style.position = 'fixed';
+          helper.style.opacity = '0';
+          document.body.appendChild(helper);
+          helper.select();
+          const copied = document.execCommand('copy');
+          document.body.removeChild(helper);
+          return copied;
+        } catch {
+          return false;
+        }
+      }
     },
 
     // Deletion happens on github.com itself, so GitHub performs the
@@ -899,7 +1594,7 @@ export function schoolCloud() {
         return;
       }
       if (!confirm(`Remove ${count} browser-only app${count === 1 ? '' : 's'} from this device?`)) return;
-      this.apps = this.apps.filter(app => app.source === 'github');
+      this.apps = this.apps.filter(app => app.source === 'github' || app.submissionId);
       this.saveApps();
       this.$nextTick(() => refreshIcons());
     },
