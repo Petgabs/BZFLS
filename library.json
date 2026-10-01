@@ -197,5 +197,19 @@
     "department": "Mathematics",
     "version": "1.0",
     "addedAt": "2026-10-01T13:08:27.802Z"
+  },
+  "apps/Hunters Hill 2026 2U Trials & Solutions.pdf": {
+    "title": "Hunters Hill 2026 Trials & Solutions — 3 hrs paper",
+    "description": "",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0",
+    "addedAt": "2026-10-01T13:12:21.696Z"
   }
 }
