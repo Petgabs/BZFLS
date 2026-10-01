@@ -57,5 +57,18 @@
     "owner": "Peter",
     "version": "1.0",
     "addedAt": "2026-10-01T11:36:42.353Z"
+  },
+  "apps/Paper 2- Practice questions.docx": {
+    "title": "MAD 12-Paper 2",
+    "description": "Answers the following questions",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "James",
+    "version": "1.0",
+    "addedAt": "2026-10-01T11:46:14.101Z"
   }
 }
