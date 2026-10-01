@@ -169,5 +169,19 @@
     "department": "Mathematics",
     "version": "1.0",
     "addedAt": "2026-10-01T13:03:13.203Z"
+  },
+  "apps/Sydney Boys 2026 2U Trials & Solutions.pdf": {
+    "title": "Sydney Boys 2026 Trials & Solutions — 3 hrs paper",
+    "description": "",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0",
+    "addedAt": "2026-10-01T13:09:25.496Z"
   }
 }
