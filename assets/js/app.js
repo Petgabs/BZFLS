@@ -39,6 +39,7 @@ import {
   CLOUD_QUEUE_PATH,
   CLOUD_TOKEN_FINGERPRINT_SESSION_KEY,
   LIBRARY_CACHE_KEY,
+  INTEGRITY_UI_KEY,
   FIRST_SEEN_KEY
 } from './config.js';
 
@@ -121,6 +122,8 @@ import {
 } from './lib/fileStore.js';
 
 import {
+  mergeLibraryEntry,
+  removeLibraryEntry,
   createGithubPublisher,
   publishSubmissionToGithub as runGithubPublish,
   deleteFileFromGithub as runGithubDelete,
@@ -147,7 +150,10 @@ import {
 
 import {
   buildIntegrityReport,
-  serialiseIntegrityReport
+  serialiseIntegrityReport,
+  diagnoseIntegrity,
+  planIntegrityRepairs,
+  serialiseDiagnosis
 } from './lib/integrity.js';
 
 import {
@@ -369,6 +375,27 @@ export function schoolCloud() {
     ageBuckets: AGE_BUCKETS,
     yearLevels: YEAR_LEVELS,
     statsAgeBucketOpen: 'week',
+
+    // --- Library data safety panel (admin) -----------------------------------
+    // Presentation-only state for the integrity panel: the error/warning list
+    // can be collapsed entirely, individual messages can be dismissed, and the
+    // troubleshooter keeps its last diagnosis and repair log here. Dismissals
+    // are remembered per device and never alter the library itself.
+    integrityUi: {
+      hideIssues: false,
+      dismissed: [],
+      troubleshooterOpen: false,
+      running: false,
+      repairing: false,
+      ranAt: '',
+      diagnosis: null,
+      log: [],
+      summary: ''
+    },
+
+    // True once library.json has been read successfully at least once; the
+    // troubleshooter uses it to tell "no metadata" from "metadata failed".
+    overridesLoaded: false,
 
     // --- Derived collections ------------------------------------------------
 
@@ -671,6 +698,346 @@ export function schoolCloud() {
       }
     },
 
+    // --- Data safety panel: hiding and dismissing messages -------------------
+    //
+    // The integrity report is rebuilt from the live data on every render, so
+    // "deleting" a message cannot change the report — it records the message's
+    // stable id on this device and filters it out. The underlying problem is
+    // still counted in the Errors/Warnings tiles and still repaired by the
+    // troubleshooter, and "Restore hidden" brings every message back.
+
+    loadIntegrityUi() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(INTEGRITY_UI_KEY) || '{}');
+        if (saved && typeof saved === 'object') {
+          this.integrityUi.hideIssues = Boolean(saved.hideIssues);
+          this.integrityUi.dismissed = Array.isArray(saved.dismissed)
+            ? saved.dismissed.filter(id => typeof id === 'string')
+            : [];
+        }
+      } catch (error) {
+        console.warn('Ignoring invalid data-safety panel preferences.', error);
+        localStorage.removeItem(INTEGRITY_UI_KEY);
+      }
+    },
+
+    saveIntegrityUi() {
+      try {
+        localStorage.setItem(INTEGRITY_UI_KEY, JSON.stringify({
+          hideIssues: this.integrityUi.hideIssues,
+          dismissed: this.integrityUi.dismissed
+        }));
+      } catch (error) {
+        console.warn('Could not remember the data-safety panel preferences.', error);
+      }
+    },
+
+    /** Messages still on screen: everything minus the dismissed ones. */
+    get visibleIntegrityIssues() {
+      const dismissed = new Set(this.integrityUi.dismissed);
+      return this.integrityReport.issues.filter(issue => !dismissed.has(issue.id));
+    },
+
+    /** How many live messages are currently dismissed (not simply absent). */
+    get dismissedIntegrityCount() {
+      const dismissed = new Set(this.integrityUi.dismissed);
+      return this.integrityReport.issues.filter(issue => dismissed.has(issue.id)).length;
+    },
+
+    get integrityIssuesHidden() {
+      return this.integrityUi.hideIssues;
+    },
+
+    /** The one button that collapses (or restores) the whole message list. */
+    toggleIntegrityIssues() {
+      this.integrityUi.hideIssues = !this.integrityUi.hideIssues;
+      this.saveIntegrityUi();
+      this.$nextTick(() => refreshIcons());
+    },
+
+    hideAllIntegrityIssues() {
+      this.integrityUi.hideIssues = true;
+      this.saveIntegrityUi();
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /** Delete one error or warning message from the panel. */
+    dismissIntegrityIssue(issue) {
+      const id = typeof issue === 'string' ? issue : issue?.id;
+      if (!id) return;
+      if (!this.integrityUi.dismissed.includes(id)) {
+        this.integrityUi.dismissed = [...this.integrityUi.dismissed, id];
+        this.saveIntegrityUi();
+      }
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /** Bring back every dismissed message (and re-open a collapsed list). */
+    restoreIntegrityIssues() {
+      this.integrityUi.dismissed = [];
+      this.integrityUi.hideIssues = false;
+      this.saveIntegrityUi();
+      this.$nextTick(() => refreshIcons());
+    },
+
+    // --- Troubleshooter ------------------------------------------------------
+    //
+    // Diagnose first (what is wrong, and why), then repair the causes that can
+    // be fixed safely from here. Every repair is an ordinary, reversible edit
+    // the administrator could have made by hand: removing an orphaned
+    // library.json entry, adding a starter entry for an uncurated file,
+    // deleting a leftover staged upload, or correcting a queue record.
+
+    /** A snapshot of the running app for the (pure) diagnosis function. */
+    integrityContext() {
+      return {
+        githubConnected: Boolean(this.githubAuth.connected),
+        offline: Boolean(this.offline),
+        usingCachedLibrary: Boolean(this.usingCachedLibrary),
+        libraryError: this.errors.library || '',
+        metadataLoaded: this.overridesLoaded,
+        dismissed: [],
+        // Queue records that live only in this browser can be repaired
+        // without a GitHub token.
+        localQueueIds: new Set(
+          (this.submissions || []).filter(record => !record?.cloudQueued).map(record => record.id)
+        )
+      };
+    },
+
+    get integrityDiagnosis() {
+      return this.integrityUi.diagnosis;
+    },
+
+    integrityFindingClass(finding) {
+      if (finding?.state === 'error') return 'border-rose-200 bg-rose-50/70 text-rose-900';
+      if (finding?.state === 'warning') return 'border-amber-200 bg-amber-50/70 text-amber-900';
+      return 'border-emerald-200 bg-emerald-50/70 text-emerald-900';
+    },
+
+    /**
+     * Work out what is wrong and what can be repaired automatically.
+     * `keepLog` is used by the repair run's verification pass, which must not
+     * wipe the record of what it just changed.
+     */
+    runIntegrityTroubleshooter({ keepLog = false } = {}) {
+      if (!this.requireAdmin()) return null;
+      this.integrityUi.running = true;
+      this.integrityUi.troubleshooterOpen = true;
+      try {
+        const diagnosis = diagnoseIntegrity(this.integrityReport, this.integrityContext());
+        this.integrityUi.diagnosis = diagnosis;
+        this.integrityUi.ranAt = diagnosis.checkedAt;
+        if (!keepLog) {
+          this.integrityUi.summary = diagnosis.headline;
+          this.integrityUi.log = [];
+        }
+        return diagnosis;
+      } finally {
+        this.integrityUi.running = false;
+        this.$nextTick(() => refreshIcons());
+      }
+    },
+
+    closeIntegrityTroubleshooter() {
+      this.integrityUi.troubleshooterOpen = false;
+      this.$nextTick(() => refreshIcons());
+    },
+
+    async copyIntegrityDiagnosis() {
+      const text = serialiseDiagnosis(this.integrityUi.diagnosis);
+      try {
+        await navigator.clipboard.writeText(text);
+        alert('Troubleshooting summary copied to the clipboard.');
+      } catch (error) {
+        console.warn('Could not copy the troubleshooting summary.', error);
+        alert(text);
+      }
+    },
+
+    integrityLog(state, message) {
+      this.integrityUi.log = [...this.integrityUi.log, { state, message }];
+    },
+
+    /** Starter library.json metadata for a file published outside the workflow. */
+    starterMetadataFor(fix) {
+      const fileName = String(fix.fileName || fix.path || '').split('/').pop();
+      const app = this.apps.find(item =>
+        String(item.githubPath || `apps/${item.fileName || ''}`).toLowerCase() === String(fix.path || '').toLowerCase()
+      );
+      const meta = app?.meta || buildMetadata({ fileName, name: fix.title || fileName }, {});
+      const entry = {
+        title: fix.title || meta.title || titleFromFileName(fileName),
+        description: meta.description || '',
+        subject: meta.subject || 'Others',
+        years: Array.isArray(meta.years) ? meta.years : [],
+        keywords: Array.isArray(meta.keywords) ? meta.keywords : []
+      };
+      if (meta.language) entry.language = meta.language;
+      if (meta.owner) entry.owner = meta.owner;
+      entry.addedAt = this.firstSeenAt(app || { fileName }) || new Date().toISOString();
+      return entry;
+    },
+
+    /** Run one repair step. Returns true when something actually changed. */
+    async applyIntegrityFix(step) {
+      const fix = step?.fix || step;
+      const record = fix.id ? (this.submissions || []).find(item => item.id === fix.id) : null;
+      const publisher = this.githubAuth.connected ? this.buildGithubPublisher() : null;
+
+      if (fix.action === 'remove-metadata-entry') {
+        if (!publisher) throw new Error('A GitHub connection is required to edit library.json.');
+        const result = await commitJsonWithRetry(publisher, {
+          path: 'library.json',
+          message: `Remove stale metadata for ${fix.path} (via School Cloud System)`,
+          transform: currentText => removeLibraryEntry(currentText, fix.path)
+        });
+        return result.changed;
+      }
+
+      if (fix.action === 'add-metadata-entry') {
+        if (!publisher) throw new Error('A GitHub connection is required to edit library.json.');
+        const entry = this.starterMetadataFor(fix);
+        const result = await commitJsonWithRetry(publisher, {
+          path: 'library.json',
+          message: `Add starter metadata for ${fix.path} (via School Cloud System)`,
+          transform: currentText => mergeLibraryEntry(currentText, fix.path, entry)
+        });
+        return result.changed;
+      }
+
+      if (fix.action === 'remove-queue-entry') {
+        if (record?.cloudQueued && publisher) {
+          await commitJsonWithRetry(publisher, {
+            path: CLOUD_QUEUE_PATH,
+            message: `Remove the broken queue entry “${fix.title}” (via School Cloud System)`,
+            transform: currentText => removeQueueEntry(currentText, fix.id)
+          });
+        } else if (record?.cloudQueued && !publisher) {
+          throw new Error('A GitHub connection is required to edit the shared review queue.');
+        }
+        this.submissions = (this.submissions || []).filter(item => item.id !== fix.id);
+        this.saveSubmissions();
+        return true;
+      }
+
+      if (fix.action === 'clear-queue-staged-path') {
+        if (record?.cloudQueued) {
+          if (!publisher) throw new Error('A GitHub connection is required to delete the staged upload.');
+          const removed = await this.removeFromCloudQueue(record, {
+            keepEntry: true,
+            message: `Troubleshooter — remove leftover staged upload ${record.cloudPath} (via School Cloud System)`
+          });
+          if (!removed) throw new Error('The staged file could not be deleted.');
+          await this.patchCloudQueueEntry(record, { path: '' });
+        }
+        if (record) {
+          record.cloudPath = '';
+          record.path = '';
+          this.saveSubmissions();
+        }
+        return true;
+      }
+
+      if (fix.action === 'reset-queue-published-flag') {
+        if (record?.cloudQueued) {
+          if (!publisher) throw new Error('A GitHub connection is required to edit the shared review queue.');
+          const patched = await this.patchCloudQueueEntry(record, {
+            published: false,
+            publishedPath: '',
+            commitUrl: ''
+          });
+          if (!patched) throw new Error('The review queue entry could not be updated.');
+        }
+        if (record) {
+          record.published = false;
+          record.publishedPath = '';
+          record.commitUrl = '';
+          this.saveSubmissions();
+        }
+        return true;
+      }
+
+      throw new Error(`Unknown repair action: ${fix.action}`);
+    },
+
+    /**
+     * Repair everything the diagnosis marked as automatically fixable, in a
+     * safe order, logging each step so the administrator can see exactly what
+     * was changed (and what still needs a human decision).
+     */
+    async repairIntegrityIssues() {
+      if (!this.requireAdmin()) return;
+      if (this.integrityUi.repairing) return;
+
+      const diagnosis = this.integrityUi.diagnosis || this.runIntegrityTroubleshooter();
+      if (!diagnosis) return;
+
+      if (diagnosis.environmentBlocked) {
+        alert('Fix the connection problem listed above first — repairing while the live data is incomplete could delete good records.');
+        return;
+      }
+
+      const plan = planIntegrityRepairs(this.integrityReport, this.integrityContext());
+      if (!plan.steps.length) {
+        this.integrityUi.summary = plan.blocked.length
+          ? 'Nothing can be repaired from here yet — connect GitHub Auto-Publish in Settings.'
+          : 'Nothing to repair.';
+        this.$nextTick(() => refreshIcons());
+        return;
+      }
+
+      const lines = plan.steps.map((step, index) => `${index + 1}. ${step.label}`).join('\n');
+      if (!confirm(`The troubleshooter will make these ${plan.steps.length} change(s):\n\n${lines}\n\nPublished files that students use are never deleted. Continue?`)) {
+        return;
+      }
+
+      this.integrityUi.repairing = true;
+      this.integrityUi.log = [];
+      let fixed = 0;
+      let failed = 0;
+
+      try {
+        for (const step of plan.steps) {
+          try {
+            const changed = await this.applyIntegrityFix(step);
+            if (changed) {
+              fixed += 1;
+              this.integrityLog('ok', `Fixed: ${step.label}`);
+            } else {
+              this.integrityLog('skipped', `Already resolved: ${step.label}`);
+            }
+          } catch (error) {
+            failed += 1;
+            console.warn('A repair step failed.', error);
+            this.integrityLog('failed', `Could not fix: ${step.label} — ${error.message}`);
+          }
+        }
+
+        for (const blocked of plan.blocked) {
+          this.integrityLog('blocked', `${blocked.label} — ${blocked.reason}`);
+        }
+
+        this.integrityUi.summary = failed
+          ? `${fixed} repaired, ${failed} could not be completed.`
+          : `${fixed} ${fixed === 1 ? 'problem' : 'problems'} repaired.`;
+
+        // Dismissed messages would hide the result of a repair, so a repair
+        // run always starts the panel from a clean slate.
+        this.integrityUi.dismissed = [];
+        this.saveIntegrityUi();
+
+        // Re-read the repository so the panel reflects the committed state.
+        await this.syncFromGithub({ silent: true });
+        await this.loadOverrides();
+        if (this.githubAuth.connected) await this.loadCloudQueue({ silent: true });
+        this.runIntegrityTroubleshooter({ keepLog: true });
+      } finally {
+        this.integrityUi.repairing = false;
+        this.$nextTick(() => refreshIcons());
+      }
+    },
+
     get topResources() {
       return [...this.apps]
         .sort((a, b) => this.downloadsOf(b) - this.downloadsOf(a) || String(a.name || a.fileName || '').localeCompare(String(b.name || b.fileName || '')))
@@ -792,6 +1159,7 @@ export function schoolCloud() {
 
       this.loadSubmissions();
       this.loadUploadPrefs();
+      this.loadIntegrityUi();
 
       try {
         const savedConfig = JSON.parse(localStorage.getItem(GITHUB_CONFIG_KEY) || '{}');
@@ -935,6 +1303,7 @@ export function schoolCloud() {
         const response = await requestWithTimeout('./library.json', { cache: 'no-store' });
         if (!response.ok) return;
         this.overrides = indexOverrides(await response.json());
+        this.overridesLoaded = true;
         // Re-decorate anything already loaded from cache.
         this.apps = this.apps.map(app => this.decorate(app));
       } catch (error) {
@@ -3051,6 +3420,9 @@ export function schoolCloud() {
       localStorage.removeItem(UPLOAD_PREFS_KEY);
       localStorage.removeItem(GITHUB_CONFIG_KEY);
       localStorage.removeItem(LIBRARY_CACHE_KEY);
+      localStorage.removeItem(INTEGRITY_UI_KEY);
+      this.integrityUi.dismissed = [];
+      this.integrityUi.hideIssues = false;
       this.apps = [];
       this.submissions = [];
       this.githubConfig = { repo: DEFAULT_GITHUB_REPO };

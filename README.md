@@ -10,6 +10,25 @@ reviews each submission. There is no server to run and no secret to manage.
 
 ## Reliability, scale and safe publishing
 
+Version 1.7 makes the dashboard's **Library data safety** panel actionable.
+Every error or warning message now has a **delete** button that removes just
+that message from the list, and one **Hide all error messages** switch collapses
+the whole section (the Errors and Warnings tiles keep counting, and **Restore
+hidden** brings everything back — dismissing is a per-device view preference,
+never a change to the library). A **Troubleshoot** button diagnoses minor
+problems instead of only reporting them: it names the likely cause of each
+finding — including connection-level causes such as being offline, a cached
+library or a failed `library.json` load — and then repairs the ones that are
+safe to repair automatically: removing orphaned `library.json` entries, adding a
+starter curated entry for a file published outside the workflow, deleting
+leftover staged uploads, and correcting review-queue records that claim a file
+is published when it is not. Repairs run queue-first, are listed for
+confirmation before anything is committed, write an on-screen repair log, and
+never delete a published file that students can open. Repairs that touch the
+repository need GitHub Auto-Publish connected in Settings; the troubleshooter
+says so instead of failing, and it refuses to repair at all while the device is
+offline or the live file list failed to load.
+
 Version 1.6 adds safety checks on top of the busy-session resilience layer.
 The Admin Dashboard now compares the live `apps/` files, `library.json` and
 `submissions/queue.json` on every load, then flags stale metadata, published
