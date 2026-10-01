@@ -71,6 +71,21 @@ export const TEACHER_SESSION_KEY = 'schoolcloud_teacher_session';
 // them. Administrators publish their own uploads immediately.
 export const REQUIRE_TEACHER_APPROVAL = true;
 
+// When the shared cloud publishing token is unlocked (see below), should a
+// teacher's upload go straight into the public repository instead of waiting
+// in the review queue?
+//
+//   false — the safe default. Nothing reaches GitHub until an administrator
+//           approves it, exactly as before.
+//   true  — a teacher's submission is committed to `apps/` and merged into
+//           `library.json` the moment it is submitted, so it reaches every
+//           device without the administrator having to be on the same
+//           browser. Administrators can still delete anything afterwards.
+//
+// Flipping this to `true` is the only change needed: the publishing pipeline
+// is already wired up in app.js (submitResource).
+export const PUBLISH_TEACHER_UPLOADS_IMMEDIATELY = false;
+
 // --- Storage keys -----------------------------------------------------------
 export const APPS_STORAGE_KEY = 'schoolcloud_apps';
 export const SUBMISSIONS_STORAGE_KEY = 'schoolcloud_submissions';
@@ -85,3 +100,34 @@ export const LIBRARY_CACHE_KEY = 'schoolcloud_library_cache';
 // in sessionStorage — never localStorage — so closing the tab forgets it, and
 // it is never embedded in this public site. See assets/js/lib/githubPublish.js.
 export const GITHUB_TOKEN_SESSION_KEY = 'schoolcloud_github_token';
+// Records whether the token in this session was pasted by hand ('manual') or
+// unlocked from the shared cloud vault ('vault'), so the UI can say which.
+export const GITHUB_TOKEN_SOURCE_SESSION_KEY = 'schoolcloud_github_token_source';
+
+// --- Shared cloud publishing token ------------------------------------------
+//
+// Settings → GitHub Auto-Publish can save the administrator's fine-grained
+// token *into the repository*, so every device shares one publishing token
+// instead of each administrator pasting their own.
+//
+// The committed file never contains the token. It holds AES-GCM ciphertext
+// whose key is derived from the shared teacher password (PBKDF2-SHA256), so
+// signing in with the teacher login unlocks it automatically and the public
+// file on its own is useless. See assets/js/lib/tokenVault.js.
+export const CLOUD_TOKEN_PATH = 'assets/data/cloud-token.json';
+
+// --- Cross-device review queue ----------------------------------------------
+//
+// A teacher's upload goes straight into the repository so an administrator on
+// any device can review it — but into a staging area, never into the library.
+// `apps.json` is built from `apps/` alone, so nothing here is listed,
+// searchable or linked on the site until it is approved.
+//
+//   submissions/pending/<id>__<file>   bytes waiting for review
+//   submissions/queue.json             metadata + status of every upload
+//
+// See assets/js/lib/reviewQueue.js.
+export const CLOUD_QUEUE_PATH = 'submissions/queue.json';
+// Short, non-reversible fingerprint of the unlocked token, remembered for the
+// tab so the status panel survives a reload.
+export const CLOUD_TOKEN_FINGERPRINT_SESSION_KEY = 'schoolcloud_cloud_token_fingerprint';

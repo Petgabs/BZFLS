@@ -18,8 +18,10 @@ import {
   removeLibraryEntry,
   createGithubPublisher,
   publishSubmissionToGithub,
-  deleteFileFromGithub
+  deleteFileFromGithub,
+  commitJsonWithRetry
 } from '../assets/js/lib/githubPublish.js';
+import { mergeQueueEntry } from '../assets/js/lib/reviewQueue.js';
 import { overrideFromSubmission, submissionFromDraft, emptyDraft } from '../assets/js/lib/submissions.js';
 
 const REPO = 'Petgabs/BZFLS';
@@ -459,5 +461,204 @@ describe('deleteFileFromGithub', () => {
   it('requires a path', async () => {
     const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch([]) });
     await expect(deleteFileFromGithub(publisher, {})).rejects.toThrow(/path/);
+  });
+});
+
+// --- Reading staged bytes back -------------------------------------------------
+
+describe('getFileBase64', () => {
+  it('returns the inline base64 the Contents API gives for a small file', async () => {
+    const fetchImpl = fakeFetch([
+      ['contents/submissions/pending/sub-1__a.pdf', {
+        status: 200,
+        json: { sha: 'blob-sha', size: 12, encoding: 'base64', content: 'SGVsbG8=\n' }
+      }]
+    ]);
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fetchImpl });
+
+    const file = await publisher.getFileBase64('submissions/pending/sub-1__a.pdf');
+
+    expect(file.exists).toBe(true);
+    expect(file.sha).toBe('blob-sha');
+    // Newlines in the API's wrapped base64 must be stripped before decoding.
+    expect(base64ToText(file.base64)).toBe('Hello');
+  });
+
+  it('falls back to the blob API when the file is too big to inline', async () => {
+    // Above ~1 MB the Contents API returns metadata with no content at all.
+    const fetchImpl = fakeFetch([
+      ['/contents/', { status: 200, json: { sha: 'big-sha', size: 2_000_000, encoding: 'none', content: '' } }],
+      ['/git/blobs/big-sha', { status: 200, json: { sha: 'big-sha', size: 2_000_000, content: 'QmlnIGZpbGU=' } }]
+    ]);
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fetchImpl });
+
+    const file = await publisher.getFileBase64('submissions/pending/sub-1__big.pdf');
+
+    expect(base64ToText(file.base64)).toBe('Big file');
+    expect(file.size).toBe(2_000_000);
+    expect(fetchImpl.calls.some(call => call.url.includes('/git/blobs/big-sha'))).toBe(true);
+  });
+
+  it('reports a missing file instead of throwing', async () => {
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch([]) });
+    const file = await publisher.getFileBase64('submissions/pending/gone.pdf');
+    expect(file).toEqual({ exists: false, sha: '', size: 0, base64: '' });
+  });
+
+  it('surfaces a real API failure', async () => {
+    const publisher = createGithubPublisher({
+      repo: REPO,
+      token: TOKEN,
+      fetch: fakeFetch([['/contents/', { status: 500, json: { message: 'Server Error' } }]])
+    });
+    await expect(publisher.getFileBase64('submissions/pending/a.pdf')).rejects.toThrow(GithubPublishError);
+  });
+});
+
+// --- Concurrent edits to one JSON file -----------------------------------------
+
+describe('commitJsonWithRetry', () => {
+  /** A queue.json that starts at `text` and accepts conflicting writes. */
+  function jsonRepo({ text = '[]', exists = true, conflictsBeforeSuccess = 0 } = {}) {
+    const state = { text, exists, sha: 'sha-0', writes: 0, conflicts: 0 };
+    const routes = [
+      [(url, options) => url.includes('/contents/') && (options.method || 'GET') === 'GET', () => (
+        state.exists
+          ? { status: 200, json: { sha: state.sha, encoding: 'base64', content: textToBase64(state.text) } }
+          : { status: 404, json: { message: 'Not Found' } }
+      )],
+      [(url, options) => url.includes('/contents/') && options.method === 'PUT', (url, options) => {
+        if (state.conflicts < conflictsBeforeSuccess) {
+          state.conflicts += 1;
+          // Someone else committed first; GitHub rejects our stale sha.
+          state.text = '[{"id":"other","submittedAt":"2026-01-01T00:00:00.000Z"}]';
+          state.sha = `sha-${state.conflicts}`;
+          state.exists = true;
+          return { status: 409, json: { message: 'is at 1234 but expected 5678' } };
+        }
+        state.writes += 1;
+        state.text = base64ToText(JSON.parse(options.body).content);
+        state.sha = `sha-written-${state.writes}`;
+        state.exists = true;
+        return { status: 200, json: { content: { sha: state.sha }, commit: { html_url: 'https://github.com/x/commit/c1' } } };
+      }]
+    ];
+    return { state, routes };
+  }
+
+  it('reads, transforms and commits in one pass when nothing conflicts', async () => {
+    const { state, routes } = jsonRepo({ text: '[]' });
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch(routes) });
+
+    const result = await commitJsonWithRetry(publisher, {
+      path: 'submissions/queue.json',
+      message: 'Queue a submission',
+      transform: current => `${current.trim()}added`
+    });
+
+    expect(result.changed).toBe(true);
+    expect(state.writes).toBe(1);
+    expect(state.text).toBe('[]added');
+  });
+
+  it('re-reads and re-applies the transform when another device commits first', async () => {
+    // This is the two-teachers-at-once case: the second write must not
+    // clobber the first, it must merge into whatever is now in the repo.
+    const { state, routes } = jsonRepo({ text: '[]', conflictsBeforeSuccess: 1 });
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch(routes) });
+
+    const result = await commitJsonWithRetry(publisher, {
+      path: 'submissions/queue.json',
+      message: 'Queue a submission',
+      transform: current => mergeQueueEntry(current, { id: 'mine', submittedAt: '2026-02-01T00:00:00.000Z' })
+    });
+
+    expect(result.changed).toBe(true);
+    const ids = JSON.parse(state.text).map(entry => entry.id);
+    expect(ids).toContain('mine');
+    expect(ids).toContain('other');
+  });
+
+  it('retries a 422 stale-sha rejection too', async () => {
+    const state = { attempts: 0, text: '[]' };
+    const routes = [
+      [(url, options) => (options.method || 'GET') === 'GET', () => ({
+        status: 200, json: { sha: 'sha-x', encoding: 'base64', content: textToBase64(state.text) }
+      })],
+      [(url, options) => options.method === 'PUT', () => {
+        state.attempts += 1;
+        return state.attempts === 1
+          ? { status: 422, json: { message: 'does not match' } }
+          : { status: 200, json: { content: { sha: 's' }, commit: { html_url: 'u' } } };
+      }]
+    ];
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch(routes) });
+
+    await expect(commitJsonWithRetry(publisher, {
+      path: 'submissions/queue.json',
+      message: 'retry',
+      transform: () => '[]'
+    })).resolves.toMatchObject({ changed: true });
+    expect(state.attempts).toBe(2);
+  });
+
+  it('gives up after the configured number of attempts', async () => {
+    const { routes } = jsonRepo({ conflictsBeforeSuccess: 99 });
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch(routes) });
+
+    await expect(commitJsonWithRetry(publisher, {
+      path: 'submissions/queue.json',
+      message: 'doomed',
+      transform: current => `${current}x`,
+      attempts: 2
+    })).rejects.toThrow(GithubPublishError);
+  });
+
+  it('does not retry an error that retrying cannot fix', async () => {
+    const calls = { puts: 0 };
+    const routes = [
+      [(url, options) => (options.method || 'GET') === 'GET', { status: 404, json: { message: 'Not Found' } }],
+      [(url, options) => options.method === 'PUT', () => {
+        calls.puts += 1;
+        return { status: 403, json: { message: 'Resource not accessible by personal access token' } };
+      }]
+    ];
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch(routes) });
+
+    await expect(commitJsonWithRetry(publisher, {
+      path: 'submissions/queue.json',
+      message: 'forbidden',
+      transform: () => '[]'
+    })).rejects.toThrow(/permission|access/i);
+    expect(calls.puts).toBe(1);
+  });
+
+  it('skips the commit when the transform returns null', async () => {
+    // patchQueueEntry returns null when the entry is not there — committing
+    // an unchanged file would just be noise in the history.
+    const { state, routes } = jsonRepo({ text: '[]' });
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch(routes) });
+
+    const result = await commitJsonWithRetry(publisher, {
+      path: 'submissions/queue.json',
+      message: 'nothing to do',
+      transform: () => null
+    });
+
+    expect(result.changed).toBe(false);
+    expect(state.writes).toBe(0);
+  });
+
+  it('creates the file when the repository has no queue yet', async () => {
+    const { state, routes } = jsonRepo({ exists: false });
+    const publisher = createGithubPublisher({ repo: REPO, token: TOKEN, fetch: fakeFetch(routes) });
+
+    await commitJsonWithRetry(publisher, {
+      path: 'submissions/queue.json',
+      message: 'first submission',
+      transform: current => mergeQueueEntry(current, { id: 'first', submittedAt: '2026-02-01T00:00:00.000Z' })
+    });
+
+    expect(JSON.parse(state.text).map(entry => entry.id)).toEqual(['first']);
   });
 });

@@ -264,6 +264,55 @@ export function createGithubPublisher(config = {}) {
     },
 
     /**
+     * Fetch a file's metadata and its raw base64 content, without decoding
+     * it to text — the way to read an uploaded PDF or Word document back out
+     * of the repository.
+     *
+     * The Contents API inlines `content` only for files under 1 MB; above
+     * that it returns an empty string and the bytes must come from the Git
+     * blob API (good to 100 MB), so both paths are handled here.
+     *
+     * Returns { exists, sha, size, base64 }.
+     */
+    async getFileBase64(path) {
+      let response;
+      try {
+        response = await fetchImpl(`${contentsUrl(path)}?ref=${encodeURIComponent(branch)}`, {
+          headers: authHeaders(token),
+          cache: 'no-store'
+        });
+      } catch {
+        throw new GithubPublishError('GitHub could not be reached. Check the connection and try again.', 0);
+      }
+      if (response.status === 404) return { exists: false, sha: '', size: 0, base64: '' };
+      if (!response.ok) throw friendly(await apiError(response, `GitHub returned ${response.status}`));
+
+      const data = await response.json();
+      const sha = data?.sha || '';
+      const inline = data?.encoding === 'base64' ? String(data.content || '').replace(/\s+/g, '') : '';
+      if (inline) return { exists: true, sha, size: Number(data?.size) || 0, base64: inline };
+
+      let blobResponse;
+      try {
+        blobResponse = await fetchImpl(`${API_BASE}/repos/${encodeRepoPath(repo)}/git/blobs/${encodeURIComponent(sha)}`, {
+          headers: authHeaders(token),
+          cache: 'no-store'
+        });
+      } catch {
+        throw new GithubPublishError('GitHub could not be reached. Check the connection and try again.', 0);
+      }
+      if (!blobResponse.ok) throw friendly(await apiError(blobResponse, `GitHub returned ${blobResponse.status}`));
+      const blob = await blobResponse.json();
+
+      return {
+        exists: true,
+        sha,
+        size: Number(data?.size) || Number(blob?.size) || 0,
+        base64: String(blob?.content || '').replace(/\s+/g, '')
+      };
+    },
+
+    /**
      * Create or update a file via the Contents API.
      *
      * @param {object} options { path, contentBase64, message, sha }  `sha` is
@@ -333,6 +382,56 @@ export function createGithubPublisher(config = {}) {
       };
     }
   };
+}
+
+// --- Conflict-safe JSON updates -------------------------------------------------
+
+/**
+ * Read a JSON file, transform its text, and commit the result — retrying
+ * when someone else committed in between.
+ *
+ * The review queue is a single shared file that several teachers can append
+ * to at the same moment. Whoever commits second would get a stale-SHA error
+ * and silently lose their entry, so the read/transform/write cycle is redone
+ * against the newest version instead.
+ *
+ * @param {object} publisher  From createGithubPublisher().
+ * @param {object} options {
+ *          path,       file to update
+ *          message,    commit message
+ *          transform,  (currentText) => newText | null  (null = nothing to do)
+ *          attempts    how many times to retry a conflict (default 3)
+ *        }
+ * Returns { changed, commitUrl, contentSha }.
+ */
+export async function commitJsonWithRetry(publisher, options = {}) {
+  const attempts = Math.max(1, Number(options.attempts) || 3);
+  let lastError;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const current = await publisher.getFile(options.path);
+    const nextText = await options.transform(current.exists ? current.text : '');
+    if (nextText === null || nextText === undefined) {
+      return { changed: false, commitUrl: '', contentSha: current.sha || '' };
+    }
+
+    try {
+      const result = await publisher.putFile({
+        path: options.path,
+        contentBase64: textToBase64(nextText),
+        sha: current.exists ? current.sha : '',
+        message: options.message
+      });
+      return { changed: true, commitUrl: result.commitUrl, contentSha: result.contentSha };
+    } catch (error) {
+      // 409 (conflict) and 422 (stale sha) both mean "re-read and try again".
+      const retryable = error instanceof GithubPublishError && (error.status === 409 || error.status === 422);
+      if (!retryable || attempt === attempts - 1) throw error;
+      lastError = error;
+    }
+  }
+
+  throw lastError;
 }
 
 // --- One-call publish pipeline -------------------------------------------------

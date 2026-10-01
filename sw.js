@@ -10,9 +10,10 @@
  *   Downloads (/apps/*)             -> cache-first once fetched, so a file
  *                                      opened at school stays available at home.
  *   Counter / GitHub API traffic    -> never cached.
+ *   Review queue (submissions/*)    -> never cached; it must be live.
  * ------------------------------------------------------------------------- */
 
-const VERSION = 'v1.3.3';
+const VERSION = 'v1.4.0';
 const SHELL_CACHE = `schoolcloud-shell-${VERSION}`;
 const DATA_CACHE = `schoolcloud-data-${VERSION}`;
 const FILE_CACHE = `schoolcloud-files-${VERSION}`;
@@ -33,6 +34,8 @@ const SHELL_ASSETS = [
   './assets/js/lib/fileStore.js',
   './assets/js/lib/credentials.js',
   './assets/js/lib/githubPublish.js',
+  './assets/js/lib/tokenVault.js',
+  './assets/js/lib/reviewQueue.js',
   './assets/vendor/alpine.min.js',
   './assets/vendor/lucide.min.js'
 ];
@@ -121,6 +124,20 @@ self.addEventListener('fetch', event => {
   if (url.hostname.endsWith('supabase.co') ||
       url.hostname.includes('abacus') ||
       url.hostname === 'api.github.com') {
+    return;
+  }
+
+  // The shared publishing token must never be served from a cache: when the
+  // administrator saves, replaces or deletes it, every device has to see the
+  // change on the next load, not whatever was cached before.
+  if (url.pathname.endsWith('/assets/data/cloud-token.json')) return;
+
+  // The review queue and the files staged in it must never be cached either.
+  // An administrator refreshing the queue has to see what teachers uploaded
+  // seconds ago, and a stale copy would resurrect submissions that were
+  // already approved or declined on another device.
+  if (url.pathname.endsWith('/submissions/queue.json') ||
+      url.pathname.includes('/submissions/pending/')) {
     return;
   }
 
