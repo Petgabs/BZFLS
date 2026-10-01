@@ -16,6 +16,28 @@
 
 export const MIRROR_KEY = 'schoolcloud_counter_mirror';
 
+// Do not create a request storm when a remote counter provider is down. A
+// short circuit-breaker window lets the library load from its mirror/local
+// backend immediately; the next visit or refresh gets a chance to recover.
+export const REMOTE_COOLDOWN_MS = 15_000;
+export const MAX_COUNTER_READS = 6;
+
+/** Run independent reads in small batches instead of opening one connection
+ * per card/resource. This matters when the legacy backend is still enabled. */
+async function mapWithConcurrency(items, worker, limit = MAX_COUNTER_READS) {
+  const output = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      output[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return output;
+}
+
 /** Safe read of the whole localStorage mirror. */
 export function readMirror(storage = globalThis.localStorage) {
   try {
@@ -203,22 +225,38 @@ export function createCounterClient(config = {}, deps = {}) {
   if (abacus) chain.push(abacus);
 
   const local = createLocalBackend({ storage });
+  const cooldownUntil = new Map();
 
   const client = {
     lastBackend: chain.length ? chain[0].name : 'local',
     online: true,
     backends: chain.map(backend => backend.name),
 
+    isCoolingDown(backend) {
+      return (cooldownUntil.get(backend.name) || 0) > Date.now();
+    },
+
+    markFailure(backend) {
+      cooldownUntil.set(backend.name, Date.now() + REMOTE_COOLDOWN_MS);
+    },
+
+    markSuccess(backend) {
+      cooldownUntil.delete(backend.name);
+    },
+
     async run(method, key) {
       let lastError = null;
       for (const backend of chain) {
+        if (client.isCoolingDown(backend)) continue;
         try {
           const value = await backend[method](key);
+          client.markSuccess(backend);
           writeMirror(key, value, storage);
           client.lastBackend = backend.name;
           client.online = true;
           return value;
         } catch (error) {
+          client.markFailure(backend);
           lastError = error;
         }
       }
@@ -239,20 +277,24 @@ export function createCounterClient(config = {}, deps = {}) {
       if (!unique.length) return {};
 
       for (const backend of chain) {
-        if (typeof backend.getMany !== 'function') continue;
+        if (typeof backend.getMany !== 'function' || client.isCoolingDown(backend)) continue;
         try {
           const values = await backend.getMany(unique);
+          client.markSuccess(backend);
           for (const [key, value] of Object.entries(values)) writeMirror(key, value, storage);
           client.lastBackend = backend.name;
           client.online = true;
           return values;
         } catch (error) {
+          client.markFailure(backend);
           console.warn(`Batch counter read failed on ${backend.name}.`, error);
         }
       }
 
-      // Fall back to individual reads through the normal chain.
-      const entries = await Promise.all(unique.map(async key => [key, await client.get(key)]));
+      // Fall back to individual reads through the normal chain, but cap the
+      // number of simultaneous calls. A temporarily unavailable provider is
+      // also skipped by run() for the cooldown window above.
+      const entries = await mapWithConcurrency(unique, async key => [key, await client.get(key)]);
       return Object.fromEntries(entries);
     }
   };

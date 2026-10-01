@@ -198,6 +198,18 @@ function refreshIcons() {
   }
 }
 
+/** A stalled data/API request must never hold the library in a spinner forever. */
+async function requestWithTimeout(url, options = {}, timeoutMs = 12_000) {
+  if (typeof AbortController !== 'function') return fetch(url, options);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function schoolCloud() {
   return {
     // --- View state ---------------------------------------------------------
@@ -881,7 +893,7 @@ export function schoolCloud() {
     /** Load the hand-curated metadata file, if present. */
     async loadOverrides() {
       try {
-        const response = await fetch('./library.json', { cache: 'no-store' });
+        const response = await requestWithTimeout('./library.json', { cache: 'no-store' });
         if (!response.ok) return;
         this.overrides = indexOverrides(await response.json());
         // Re-decorate anything already loaded from cache.
@@ -1472,7 +1484,7 @@ export function schoolCloud() {
         let payload = null;
 
         try {
-          const response = await fetch(`./${CLOUD_TOKEN_PATH}?refresh=${Date.now()}`, { cache: 'no-store' });
+          const response = await requestWithTimeout(`./${CLOUD_TOKEN_PATH}?refresh=${Date.now()}`, { cache: 'no-store' });
           if (response.ok) payload = parseVault(await response.text());
         } catch (error) {
           console.warn('The deployed cloud token file was unavailable.', error);
@@ -1506,7 +1518,7 @@ export function schoolCloud() {
       const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/contents/${path}?ref=main`;
 
       try {
-        const response = await fetch(endpoint, {
+        const response = await requestWithTimeout(endpoint, {
           cache: 'no-store',
           headers: { Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28' }
         });
@@ -1917,7 +1929,7 @@ export function schoolCloud() {
     /** Read queue.json: the deployed site first, the API as the fallback. */
     async fetchCloudQueue() {
       try {
-        const response = await fetch(`./${CLOUD_QUEUE_PATH}?refresh=${Date.now()}`, { cache: 'no-store' });
+        const response = await requestWithTimeout(`./${CLOUD_QUEUE_PATH}?refresh=${Date.now()}`, { cache: 'no-store' });
         if (response.ok) return parseQueue(await response.text());
       } catch (error) {
         console.warn('The deployed review queue was unavailable.', error);
@@ -1935,7 +1947,7 @@ export function schoolCloud() {
       }
 
       try {
-        const response = await fetch(endpoint, { cache: 'no-store', headers });
+        const response = await requestWithTimeout(endpoint, { cache: 'no-store', headers });
         if (!response.ok) return null;
         const body = await response.text();
         const direct = parseQueue(body);
@@ -2231,7 +2243,7 @@ export function schoolCloud() {
       // GitHub's anonymous API rate limit when a whole class refreshes at once.
       if (repo === DEFAULT_GITHUB_REPO && onGithubPages) {
         try {
-          const manifestResponse = await fetch(`./apps.json?refresh=${Date.now()}`, { cache: 'no-store' });
+          const manifestResponse = await requestWithTimeout(`./apps.json?refresh=${Date.now()}`, { cache: 'no-store' });
           if (manifestResponse.ok) {
             const manifestFiles = await manifestResponse.json();
             if (Array.isArray(manifestFiles)) return manifestFiles;
@@ -2247,7 +2259,7 @@ export function schoolCloud() {
       if (this.githubAuth?.connected && this.githubAuth?.token) {
         headers.Authorization = `Bearer ${this.githubAuth.token}`;
       }
-      const response = await fetch(endpoint, {
+      const response = await requestWithTimeout(endpoint, {
         cache: 'no-store',
         headers
       });
@@ -2865,7 +2877,7 @@ export function schoolCloud() {
       }
       if (record.storage === 'inline' && record.inlineData) {
         try {
-          const response = await fetch(record.inlineData);
+          const response = await requestWithTimeout(record.inlineData);
           return URL.createObjectURL(await response.blob());
         } catch {
           /* Fall through to the repository copy. */
@@ -2939,7 +2951,7 @@ export function schoolCloud() {
         blob = new Blob([target.content], { type: 'text/html' });
       } else if (target.downloadUrl) {
         try {
-          const response = await fetch(target.downloadUrl, { cache: 'no-store' });
+          const response = await requestWithTimeout(target.downloadUrl, { cache: 'no-store' });
           if (!response.ok) throw new Error(`Download returned ${response.status}`);
           // Keep binary resources byte-for-byte intact.
           blob = await response.blob();

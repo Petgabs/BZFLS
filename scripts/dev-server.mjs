@@ -94,6 +94,12 @@ const server = createServer(async (request, response) => {
     'Content-Type': MIME[extname(filePath).toLowerCase()] || 'application/octet-stream',
     // The whole point: never let a browser or proxy cache dev responses.
     'Cache-Control': 'no-store, must-revalidate',
+    // Match the production hardening while using the local server. This also
+    // makes the live preview useful for catching iframe/CSP regressions.
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
     'Content-Length': info.size
   };
 
