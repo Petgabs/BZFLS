@@ -146,6 +146,11 @@ import {
 } from './lib/resourceStats.js';
 
 import {
+  buildIntegrityReport,
+  serialiseIntegrityReport
+} from './lib/integrity.js';
+
+import {
   pendingPathFor,
   queueEntryFromSubmission,
   submissionFromQueueEntry,
@@ -630,6 +635,40 @@ export function schoolCloud() {
 
     get dashboardAttentionCount() {
       return this.managementAlerts.reduce((total, alert) => total + Number(alert.count || 0), 0);
+    },
+
+    /** Integrity report for the live library, curated metadata and review queue. */
+    get integrityReport() {
+      return buildIntegrityReport({
+        apps: this.apps.filter(app => app.source === 'github'),
+        metadataPaths: [...this.overrides.keys()],
+        queueEntries: this.submissions
+      });
+    },
+
+    get integrityStatusClass() {
+      const status = this.integrityReport.status;
+      if (status === 'error') return 'bg-rose-50 text-rose-700 ring-rose-200';
+      if (status === 'warning') return 'bg-amber-50 text-amber-700 ring-amber-200';
+      return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
+    },
+
+    integrityIssueClass(issue) {
+      return issue?.severity === 'error'
+        ? 'border-rose-200 bg-rose-50/60 text-rose-900'
+        : 'border-amber-200 bg-amber-50/60 text-amber-900';
+    },
+
+    async copyIntegrityReport() {
+      if (!this.requireAdmin()) return;
+      const text = serialiseIntegrityReport(this.integrityReport);
+      try {
+        await navigator.clipboard.writeText(text);
+        alert('Integrity report copied to the clipboard.');
+      } catch (error) {
+        console.warn('Could not copy the integrity report.', error);
+        alert(text);
+      }
     },
 
     get topResources() {

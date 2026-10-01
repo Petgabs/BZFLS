@@ -33,7 +33,7 @@ describe('validateTeacherCredentials', () => {
   it('enforces a minimum password length', () => {
     const short = 'a'.repeat(MIN_TEACHER_PASSWORD_LENGTH - 1);
     const errors = validateTeacherCredentials({ username: 'staff-2027', password: short, confirm: short });
-    expect(errors.password).toMatch(/at least 8 characters/i);
+    expect(errors.password).toMatch(new RegExp(`at least ${MIN_TEACHER_PASSWORD_LENGTH} characters`, 'i'));
   });
 
   it('rejects a password equal to the username', () => {

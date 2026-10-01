@@ -64,8 +64,8 @@ export const VISIBILITY_CLASS = 'class';
 
 export const VISIBILITY_OPTIONS = [
   { value: VISIBILITY_PUBLIC, label: 'Public', hint: 'Listed for everyone, including families and the wider community.' },
-  { value: VISIBILITY_SCHOOL, label: 'School only', hint: 'Intended for staff and students of the school.' },
-  { value: VISIBILITY_CLASS, label: 'Class only', hint: 'Intended for one class or teaching group.' }
+  { value: VISIBILITY_SCHOOL, label: 'School only', hint: 'Intended for staff and students of the school. This is an audience label, not access control.' },
+  { value: VISIBILITY_CLASS, label: 'Class only', hint: 'Intended for one class or teaching group. This is an audience label, not access control.' }
 ];
 
 const VISIBILITY_LABELS = {

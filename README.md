@@ -10,7 +10,15 @@ reviews each submission. There is no server to run and no secret to manage.
 
 ## Reliability, scale and safe publishing
 
-Version 1.5 adds a resilience layer for busy school sessions. GitHub Pages
+Version 1.6 adds safety checks on top of the busy-session resilience layer.
+The Admin Dashboard now compares the live `apps/` files, `library.json` and
+`submissions/queue.json` on every load, then flags stale metadata, published
+queue records whose files are missing, pending submissions with no staged file,
+and live files that still need curated metadata. The upload form also makes the
+public-resource rule explicit: visibility is an intended-audience label in this
+static site, not private access control.
+
+Version 1.5 added a resilience layer for busy school sessions. GitHub Pages
 serves the public shell and files from its CDN, while the browser protects the
 experience when a backend is slow or temporarily unavailable:
 
@@ -36,7 +44,8 @@ person who is already authorised to use the browser. For stronger staff
 identity, use an identity-aware upload service in front of GitHub rather than
 sharing the teacher password. The safeguards here prevent accidental exposure
 and transient failures; they do not turn client-side login into server-side
-access control.
+access control. A concrete server-side upgrade path lives in
+[`docs/PRODUCTION_SECURITY_BLUEPRINT.md`](docs/PRODUCTION_SECURITY_BLUEPRINT.md).
 
 ### Automatic validation, merge and deployment
 
