@@ -33,18 +33,6 @@
     "department": "Mathematics",
     "version": "1.0"
   },
-  "apps/Year 10 & 11  class schedule.pdf": {
-    "title": "Schedule",
-    "description": "Study",
-    "subject": "Others",
-    "years": [
-      10
-    ],
-    "keywords": [],
-    "language": "English",
-    "owner": "Peter",
-    "version": "1.0"
-  },
   "apps/Teacher Class Schedule.xlsx": {
     "title": "Class schedule",
     "description": "Study",

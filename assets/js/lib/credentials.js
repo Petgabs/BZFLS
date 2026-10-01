@@ -14,8 +14,8 @@
 // interactive side lives in app.js.
 // ---------------------------------------------------------------------------
 
-/** Minimum length for a new teacher password. */
-export const MIN_TEACHER_PASSWORD_LENGTH = 8;
+/** Minimum length for a new teacher password. Shared accounts need passphrases, not short passwords. */
+export const MIN_TEACHER_PASSWORD_LENGTH = 14;
 
 /** Teacher usernames: 3–32 characters of letters, numbers, dots, dashes. */
 const USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$/;
@@ -35,10 +35,10 @@ export function validateTeacherCredentials({ username, password, confirm } = {})
 
   const pass = String(password || '');
   if (!pass) errors.password = 'Enter a password.';
-  else if (pass.length < MIN_TEACHER_PASSWORD_LENGTH) {
-    errors.password = `Use at least ${MIN_TEACHER_PASSWORD_LENGTH} characters — teachers share this account, so make it strong.`;
-  } else if (pass === user) {
+  else if (pass === user) {
     errors.password = 'The password cannot be the same as the username.';
+  } else if (pass.length < MIN_TEACHER_PASSWORD_LENGTH) {
+    errors.password = `Use at least ${MIN_TEACHER_PASSWORD_LENGTH} characters — teachers share this account, so use a strong passphrase.`;
   } else if (/^\s|\s$/.test(pass)) {
     errors.password = 'The password must not start or end with a space.';
   }

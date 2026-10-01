@@ -14,7 +14,7 @@
  *   Review queue/token files  -> network only
  * ------------------------------------------------------------------------- */
 
-const VERSION = 'v1.5.0';
+const VERSION = 'v1.6.0';
 const SHELL_CACHE = `schoolcloud-shell-${VERSION}`;
 const DATA_CACHE = `schoolcloud-data-${VERSION}`;
 const FILE_CACHE = `schoolcloud-files-${VERSION}`;
@@ -48,6 +48,7 @@ const SHELL_ASSETS = [
   './assets/js/lib/tokenVault.js',
   './assets/js/lib/reviewQueue.js',
   './assets/js/lib/resourceStats.js',
+  './assets/js/lib/integrity.js',
   './assets/vendor/alpine.min.js',
   './assets/vendor/lucide.min.js'
 ];
