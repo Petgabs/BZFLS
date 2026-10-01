@@ -211,5 +211,19 @@
     "department": "Mathematics",
     "version": "1.0",
     "addedAt": "2026-10-01T13:12:21.696Z"
+  },
+  "apps/2025-hsc-maths-advanced (1).pdf": {
+    "title": "HSC maths advanced-2025 — 3 hrs paper",
+    "description": "",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0",
+    "addedAt": "2026-10-01T13:13:26.430Z"
   }
 }
