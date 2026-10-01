@@ -40,7 +40,7 @@
                 <div class="flex flex-col items-start text-left leading-tight">
                     <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-900">
                         School Cloud <span class="text-indigo-600">System</span>
-                        <span class="ml-1.5 align-middle text-[10px] font-semibold text-slate-500 bg-slate-100 ring-1 ring-slate-200 rounded px-1.5 py-0.5">v1.4.1</span>
+                        <span class="ml-1.5 align-middle text-[10px] font-semibold text-slate-500 bg-slate-100 ring-1 ring-slate-200 rounded px-1.5 py-0.5">v1.4.2</span>
                     </h1>
                     <p class="text-[11px] font-medium text-slate-500 tracking-wide mt-0.5">
                         powered by <span class="font-semibold text-slate-700">Petgabs</span>
@@ -105,38 +105,100 @@
     <!-- Main Content -->
     <main id="main-content" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        <!-- Welcome Section -->
-        <section x-show="currentView === 'library'" x-transition aria-labelledby="how-it-works"
-             class="mb-10 grid grid-cols-1 md:grid-cols-3 gap-6 bg-indigo-900 text-white p-8 rounded-2xl shadow-xl">
-            <h2 id="how-it-works" class="sr-only">How the library works</h2>
-            <div class="flex flex-col gap-3">
-                <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="upload-cloud" class="w-5 h-5 text-indigo-100" aria-hidden="true"></i>
+        <!-- Student learning dashboard -->
+        <section x-show="currentView === 'library'" x-transition aria-labelledby="student-dashboard-heading"
+                 class="relative mb-8 overflow-hidden rounded-3xl bg-slate-950 text-white shadow-2xl shadow-indigo-950/20">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(129,140,248,0.38),_transparent_34%),radial-gradient(circle_at_bottom_left,_rgba(45,212,191,0.20),_transparent_30%)]" aria-hidden="true"></div>
+            <div class="absolute -right-20 -top-24 h-72 w-72 rounded-full border border-white/10" aria-hidden="true"></div>
+            <div class="absolute -bottom-32 right-1/4 h-64 w-64 rounded-full border border-white/10" aria-hidden="true"></div>
+
+            <div class="relative grid grid-cols-1 gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)] lg:gap-12 lg:p-10">
+                <div class="max-w-2xl">
+                    <div class="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold tracking-wide text-indigo-100 backdrop-blur">
+                        <span class="h-2 w-2 rounded-full bg-emerald-300"></span>
+                        YOUR LEARNING SPACE
+                    </div>
+                    <p class="text-sm font-medium text-indigo-200" x-text="studentGreeting + ', learner.'"></p>
+                    <h2 id="student-dashboard-heading" class="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
+                        Find the right resource for your next lesson.
+                    </h2>
+                    <p class="mt-4 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
+                        Search teacher-approved mini apps, notes, worksheets and revision materials — organised around the subjects and year levels you study.
+                    </p>
+
+                    <div class="mt-7 flex flex-wrap gap-3">
+                        <button type="button" @click="focusLibrarySearch()"
+                                class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-900 shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-indigo-50 focus-ring">
+                            <i data-lucide="search" class="h-4 w-4" aria-hidden="true"></i>
+                            Find a resource
+                        </button>
+                        <button type="button" @click="browseLatest()"
+                                class="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 focus-ring">
+                            <i data-lucide="sparkles" class="h-4 w-4 text-emerald-300" aria-hidden="true"></i>
+                            Explore what’s new
+                        </button>
+                    </div>
+
+                    <dl class="mt-8 grid max-w-xl grid-cols-3 gap-3 border-t border-white/10 pt-6 sm:gap-6">
+                        <div>
+                            <dt class="text-xs font-medium text-slate-400">Learning resources</dt>
+                            <dd class="mt-1 text-2xl font-bold text-white" x-text="formatCount(apps.length)"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs font-medium text-slate-400">Subjects</dt>
+                            <dd class="mt-1 text-2xl font-bold text-white" x-text="formatCount(subjectOptions.length)"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs font-medium text-slate-400">New today</dt>
+                            <dd class="mt-1 text-2xl font-bold text-white" x-text="formatCount(latestCount)"></dd>
+                        </div>
+                    </dl>
                 </div>
-                <h3 class="text-lg font-bold text-white">1. Teachers Upload</h3>
-                <p class="text-indigo-100 text-sm leading-relaxed">Staff sign in with the teacher account, upload a file and describe it — title, subject, year group and more.</p>
-            </div>
-            <div class="flex flex-col gap-3">
-                <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="shield-check" class="w-5 h-5 text-indigo-100" aria-hidden="true"></i>
-                </div>
-                <h3 class="text-lg font-bold text-white">2. Reviewed &amp; Approved</h3>
-                <p class="text-indigo-100 text-sm leading-relaxed">New submissions wait in a review queue. Once an administrator approves them they appear in the library instantly.</p>
-            </div>
-            <div class="flex flex-col gap-3">
-                <div class="bg-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="search" class="w-5 h-5 text-indigo-100" aria-hidden="true"></i>
-                </div>
-                <h3 class="text-lg font-bold text-white">3. Search &amp; Use</h3>
-                <p class="text-indigo-100 text-sm leading-relaxed">Students search by subject, topic or year group, preview resources in the browser and download them for offline use.</p>
+
+                <aside class="rounded-2xl border border-white/15 bg-white/10 p-5 shadow-xl shadow-black/10 backdrop-blur-sm sm:p-6" aria-label="Quick subject browse">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-bold uppercase tracking-[0.16em] text-indigo-200">Start exploring</p>
+                            <h3 class="mt-1 text-lg font-bold text-white">Browse by subject</h3>
+                        </div>
+                        <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-400/20 text-indigo-100">
+                            <i data-lucide="compass" class="h-5 w-5" aria-hidden="true"></i>
+                        </span>
+                    </div>
+                    <p class="mt-2 text-sm leading-6 text-slate-300">Choose a subject to see the latest resources selected for you.</p>
+                    <div class="mt-5 flex flex-wrap gap-2" x-show="subjectShortcuts.length > 0">
+                        <template x-for="entry in subjectShortcuts.slice(0, 6)" :key="'hero-subject-' + entry.subject">
+                            <button type="button" @click="browseSubject(entry.subject)"
+                                    class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-900/30 px-3 py-2 text-left text-xs font-semibold text-white transition hover:border-indigo-200/60 hover:bg-white/15 focus-ring">
+                                <span x-text="entry.subject"></span>
+                                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-indigo-100" x-text="entry.count"></span>
+                            </button>
+                        </template>
+                    </div>
+                    <div x-show="subjectShortcuts.length === 0" class="mt-5 rounded-xl border border-dashed border-white/20 p-4 text-sm text-slate-300">
+                        Resources will appear here as your school library grows.
+                    </div>
+                    <button type="button" @click="focusLibrarySearch()" class="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-white hover:text-indigo-200 focus-ring rounded-md">
+                        Browse the whole library
+                        <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
+                    </button>
+                </aside>
             </div>
         </section>
 
         <!-- Library View -->
-        <div x-show="currentView === 'library'" x-transition x-cloak>
-            <div class="mb-6">
-                <h2 class="text-3xl font-bold text-slate-900">Mini Apps Library</h2>
-                <p class="text-slate-600 mt-2">Browse the collection of educational tools for your classroom.</p>
+        <div x-show="currentView === 'library'" x-transition x-cloak id="library-catalog">
+            <div class="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">School library</p>
+                    <h2 class="mt-1 text-3xl font-bold tracking-tight text-slate-900">Explore your learning library</h2>
+                    <p class="mt-2 text-slate-600">Search by topic, subject or year level. Every resource is ready to preview or download.</p>
+                </div>
+                <button type="button" @click="browseLatest()"
+                        class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus-ring">
+                    <i data-lucide="clock-3" class="h-4 w-4" aria-hidden="true"></i>
+                    Latest additions
+                </button>
             </div>
 
             <!-- Search and filters -->
@@ -571,27 +633,36 @@
 
         <!-- Admin Dashboard View -->
         <div x-show="isAdmin && currentView === 'dashboard'" x-transition x-cloak>
-            <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
-                <div>
-                    <button type="button" @click="currentView = 'library'" class="text-slate-500 hover:text-slate-900 flex items-center gap-2 transition-colors mb-3 focus-ring rounded-md">
-                        <i data-lucide="arrow-left" class="w-4 h-4" aria-hidden="true"></i>
-                        Back to Library
-                    </button>
-                    <h2 class="text-3xl font-bold text-slate-900">Admin Dashboard</h2>
-                    <p class="text-slate-600 mt-2">Live usage for the public library, shared across every device.</p>
-                </div>
-                <div class="flex flex-wrap items-center gap-3">
-                    <button type="button" @click="refreshWebsite()" :disabled="refreshingSite" aria-label="Refresh the whole website"
-                            title="Reload the site and pick up the latest deployed version"
-                            class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-4 py-2 rounded-md hover:bg-slate-50 disabled:opacity-60 transition-colors focus-ring">
-                        <i :data-lucide="refreshingSite ? 'loader-2' : 'rotate-cw'" class="w-4 h-4" :class="refreshingSite && 'animate-spin'" aria-hidden="true"></i>
-                        <span x-text="refreshingSite ? 'Refreshing…' : 'Refresh Site'"></span>
-                    </button>
-                    <button type="button" @click="refreshStats()" :disabled="stats.loadingDownloads" aria-label="Refresh statistics"
-                            class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-60 transition-colors shadow-sm focus-ring">
-                        <i data-lucide="refresh-cw" class="w-4 h-4" :class="stats.loadingDownloads && 'animate-spin'" aria-hidden="true"></i>
-                        <span x-text="stats.loadingDownloads ? 'Refreshing…' : 'Refresh Stats'"></span>
-                    </button>
+            <div class="relative mb-6 overflow-hidden rounded-3xl bg-slate-950 px-6 py-7 text-white shadow-xl shadow-slate-900/10 sm:px-8 sm:py-8">
+                <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(99,102,241,0.40),_transparent_35%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.20),_transparent_32%)]" aria-hidden="true"></div>
+                <div class="relative flex flex-wrap items-center justify-between gap-6">
+                    <div>
+                        <button type="button" @click="currentView = 'library'" class="mb-4 flex items-center gap-2 rounded-md text-sm text-slate-300 transition hover:text-white focus-ring">
+                            <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
+                            Back to student library
+                        </button>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">Admin control centre</h2>
+                            <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-300"></span>
+                                Library live
+                            </span>
+                        </div>
+                        <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">Manage publishing, content quality and school-wide resource activity from one focused workspace.</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button type="button" @click="refreshWebsite()" :disabled="refreshingSite" aria-label="Refresh the whole website"
+                                title="Reload the site and pick up the latest deployed version"
+                                class="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60 focus-ring">
+                            <i :data-lucide="refreshingSite ? 'loader-2' : 'rotate-cw'" class="h-4 w-4" :class="refreshingSite && 'animate-spin'" aria-hidden="true"></i>
+                            <span x-text="refreshingSite ? 'Refreshing…' : 'Refresh Site'"></span>
+                        </button>
+                        <button type="button" @click="refreshStats()" :disabled="stats.loadingDownloads" aria-label="Refresh statistics"
+                                class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-900 shadow-lg shadow-black/10 transition hover:bg-indigo-50 disabled:opacity-60 focus-ring">
+                            <i data-lucide="refresh-cw" class="h-4 w-4 text-indigo-600" :class="stats.loadingDownloads && 'animate-spin'" aria-hidden="true"></i>
+                            <span x-text="stats.loadingDownloads ? 'Refreshing…' : 'Refresh Stats'"></span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -608,6 +679,74 @@
                     They will resync automatically when a backend is available.
                 </span>
             </div>
+
+            <!-- Admin workspace: priority work, quick actions and current content health. -->
+            <section class="mb-10" aria-labelledby="workspace-heading">
+                <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">Today’s workspace</p>
+                        <h3 id="workspace-heading" class="mt-1 text-xl font-bold text-slate-900">Manage what needs attention</h3>
+                    </div>
+                    <p class="text-sm text-slate-500">
+                        <span class="font-semibold text-slate-700" x-text="dashboardAttentionCount"></span>
+                        <span x-text="dashboardAttentionCount === 1 ? ' priority check' : ' priority checks'"></span>
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <template x-for="alert in managementAlerts" :key="alert.id">
+                            <article class="rounded-2xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                                     :class="alert.tone === 'amber' ? 'border-amber-200' : (alert.tone === 'rose' ? 'border-rose-200' : 'border-indigo-200')">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                                         :class="alert.tone === 'amber' ? 'bg-amber-50 text-amber-700' : (alert.tone === 'rose' ? 'bg-rose-50 text-rose-700' : 'bg-indigo-50 text-indigo-700')">
+                                        <i :data-lucide="alert.icon" class="h-5 w-5" aria-hidden="true"></i>
+                                    </div>
+                                    <span class="rounded-full px-2.5 py-1 text-xs font-bold"
+                                          :class="alert.tone === 'amber' ? 'bg-amber-100 text-amber-800' : (alert.tone === 'rose' ? 'bg-rose-100 text-rose-800' : 'bg-indigo-100 text-indigo-800')"
+                                          x-text="alert.count"></span>
+                                </div>
+                                <h4 class="mt-4 font-bold text-slate-900" x-text="alert.label"></h4>
+                                <p class="mt-1 min-h-[3rem] text-sm leading-5 text-slate-500" x-text="alert.description"></p>
+                                <button type="button" @click="openAdminWorkspace(alert.destination)"
+                                        class="mt-4 inline-flex items-center gap-1.5 rounded-md text-sm font-semibold text-indigo-700 transition hover:text-indigo-900 focus-ring">
+                                    <span x-text="alert.actionLabel"></span>
+                                    <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                                </button>
+                            </article>
+                        </template>
+                    </div>
+
+                    <aside class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-label="Administrator quick actions">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Quick actions</p>
+                                <h4 class="mt-1 font-bold text-slate-900">Keep the library moving</h4>
+                            </div>
+                            <i data-lucide="zap" class="h-5 w-5 text-amber-500" aria-hidden="true"></i>
+                        </div>
+                        <div class="mt-4 grid grid-cols-2 gap-2">
+                            <button type="button" @click="openAdminWorkspace('upload')" class="group flex min-h-20 flex-col items-start justify-between rounded-xl border border-slate-200 p-3 text-left transition hover:border-indigo-200 hover:bg-indigo-50 focus-ring">
+                                <i data-lucide="upload-cloud" class="h-4 w-4 text-indigo-600" aria-hidden="true"></i>
+                                <span class="text-sm font-semibold text-slate-700 group-hover:text-indigo-800">Publish resource</span>
+                            </button>
+                            <button type="button" @click="openAdminWorkspace('submissions')" class="group flex min-h-20 flex-col items-start justify-between rounded-xl border border-slate-200 p-3 text-left transition hover:border-amber-200 hover:bg-amber-50 focus-ring">
+                                <i data-lucide="clipboard-check" class="h-4 w-4 text-amber-600" aria-hidden="true"></i>
+                                <span class="text-sm font-semibold text-slate-700 group-hover:text-amber-800">Review queue</span>
+                            </button>
+                            <button type="button" @click="openAdminWorkspace('library')" class="group flex min-h-20 flex-col items-start justify-between rounded-xl border border-slate-200 p-3 text-left transition hover:border-emerald-200 hover:bg-emerald-50 focus-ring">
+                                <i data-lucide="library" class="h-4 w-4 text-emerald-600" aria-hidden="true"></i>
+                                <span class="text-sm font-semibold text-slate-700 group-hover:text-emerald-800">Open library</span>
+                            </button>
+                            <button type="button" @click="openAdminWorkspace('settings')" class="group flex min-h-20 flex-col items-start justify-between rounded-xl border border-slate-200 p-3 text-left transition hover:border-slate-300 hover:bg-slate-50 focus-ring">
+                                <i data-lucide="settings-2" class="h-4 w-4 text-slate-600" aria-hidden="true"></i>
+                                <span class="text-sm font-semibold text-slate-700">Workspace settings</span>
+                            </button>
+                        </div>
+                    </aside>
+                </div>
+            </section>
 
             <!-- Stat cards -->
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
@@ -645,6 +784,96 @@
                         Review submissions →
                     </button>
                 </div>
+            </div>
+
+            <!-- Content health and engagement, providing fast routes into the existing library controls. -->
+            <div class="grid grid-cols-1 gap-6 xl:grid-cols-2 mb-10">
+                <section id="review-due-section" class="scroll-mt-24 overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-sm" aria-labelledby="review-due-heading">
+                    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-rose-100 bg-rose-50/60 px-5 py-4">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-100 text-rose-700">
+                                    <i data-lucide="calendar-clock" class="h-4 w-4" aria-hidden="true"></i>
+                                </span>
+                                <h3 id="review-due-heading" class="font-bold text-slate-900">Review due</h3>
+                            </div>
+                            <p class="mt-1 text-sm text-slate-600">Confirm that scheduled content is still accurate and useful.</p>
+                        </div>
+                        <span class="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-rose-700 ring-1 ring-rose-200" x-text="reviewDueApps.length + (reviewDueApps.length === 1 ? ' file' : ' files')"></span>
+                    </div>
+                    <template x-if="reviewDueApps.length === 0">
+                        <div class="flex min-h-44 flex-col items-center justify-center px-5 py-8 text-center">
+                            <span class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                                <i data-lucide="badge-check" class="h-5 w-5" aria-hidden="true"></i>
+                            </span>
+                            <p class="mt-3 text-sm font-semibold text-slate-700">Everything is on schedule.</p>
+                            <p class="mt-1 text-xs text-slate-500">No published resource has reached its review date.</p>
+                        </div>
+                    </template>
+                    <ul x-show="reviewDueApps.length > 0" class="divide-y divide-slate-100">
+                        <template x-for="item in reviewDueApps.slice(0, 4)" :key="'review-due-' + item.id">
+                            <li class="flex items-center justify-between gap-3 px-5 py-3.5">
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-semibold text-slate-800" x-text="item.name"></p>
+                                    <p class="mt-0.5 truncate text-xs text-slate-500">
+                                        <span x-text="item.meta.subject || 'Unclassified'"></span>
+                                        <span aria-hidden="true"> · </span>
+                                        due <span x-text="formatDate(item.meta.reviewDate)"></span>
+                                    </p>
+                                </div>
+                                <button type="button" @click="openResourceInLibrary(item)" class="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus-ring">
+                                    Open
+                                </button>
+                            </li>
+                        </template>
+                    </ul>
+                    <div x-show="reviewDueApps.length > 4" class="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+                        <span x-text="reviewDueApps.length - 4"></span> more file(s) require review.
+                    </div>
+                </section>
+
+                <section class="overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-sm" aria-labelledby="engagement-heading">
+                    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-indigo-100 bg-indigo-50/60 px-5 py-4">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
+                                    <i data-lucide="trending-up" class="h-4 w-4" aria-hidden="true"></i>
+                                </span>
+                                <h3 id="engagement-heading" class="font-bold text-slate-900">Most used resources</h3>
+                            </div>
+                            <p class="mt-1 text-sm text-slate-600">A quick read on what students are finding most useful.</p>
+                        </div>
+                        <span class="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 ring-1 ring-indigo-200">Live downloads</span>
+                    </div>
+                    <template x-if="topResources.length === 0">
+                        <div class="flex min-h-44 flex-col items-center justify-center px-5 py-8 text-center">
+                            <span class="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                                <i data-lucide="bar-chart-3" class="h-5 w-5" aria-hidden="true"></i>
+                            </span>
+                            <p class="mt-3 text-sm font-semibold text-slate-700">Engagement will appear here.</p>
+                            <p class="mt-1 text-xs text-slate-500">Publish resources to begin collecting library activity.</p>
+                        </div>
+                    </template>
+                    <ol x-show="topResources.length > 0" class="divide-y divide-slate-100">
+                        <template x-for="(item, index) in topResources" :key="'top-resource-' + item.id">
+                            <li class="flex items-center gap-3 px-5 py-3">
+                                <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-700" x-text="index + 1"></span>
+                                <div class="min-w-0 flex-1">
+                                    <p class="truncate text-sm font-semibold text-slate-800" x-text="item.name"></p>
+                                    <p class="mt-0.5 text-xs text-slate-500">
+                                        <span x-text="item.meta.subject || 'Unclassified'"></span>
+                                        <span aria-hidden="true"> · </span>
+                                        <span x-text="fileExtension(item).toUpperCase()"></span>
+                                    </p>
+                                </div>
+                                <span class="shrink-0 text-right text-xs font-bold text-emerald-700">
+                                    <span x-text="formatCount(downloadsOf(item))"></span>
+                                    <span class="font-medium text-emerald-600">downloads</span>
+                                </span>
+                            </li>
+                        </template>
+                    </ol>
+                </section>
             </div>
 
             <!-- Per-app table -->
