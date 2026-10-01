@@ -1,7 +1,7 @@
 [
   {
     "id": "7b679285-4f8f-4607-b9a0-d856a0fa7e2c",
-    "path": "submissions/pending/7b679285-4f8f-4607-b9a0-d856a0fa7e2c__Meeting with the Deputy Principal.docx",
+    "path": "",
     "fileName": "Meeting with the Deputy Principal.docx",
     "size": 22457,
     "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -25,13 +25,13 @@
     "accessibility": "",
     "submittedBy": "teacher",
     "submittedAt": "2026-10-01T11:36:42.353Z",
-    "status": "pending",
-    "reviewedAt": "",
-    "reviewedBy": "",
+    "status": "approved",
+    "reviewedAt": "2026-10-01T11:38:23.655Z",
+    "reviewedBy": "administrator",
     "reviewNote": "",
-    "published": false,
-    "publishedPath": "",
-    "commitUrl": ""
+    "published": true,
+    "publishedPath": "apps/Meeting with the Deputy Principal.docx",
+    "commitUrl": "https://github.com/Petgabs/BZFLS/commit/7c19f3be709e4bc4ca030e38f52b6bbcc64e0d23"
   },
   {
     "id": "c9983d78-b94e-4bda-98d5-c459a88d3e7d",
