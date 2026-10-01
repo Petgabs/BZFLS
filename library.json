@@ -253,5 +253,19 @@
     "department": "Mathematics",
     "version": "1.0",
     "addedAt": "2026-10-01T13:14:50.814Z"
+  },
+  "apps/2024-hsc-maths-adv-mg.pdf": {
+    "title": "HSC maths adv 2024— SOLUTIONS",
+    "description": "",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0",
+    "addedAt": "2026-10-01T13:15:32.238Z"
   }
 }
