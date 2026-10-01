@@ -1,7 +1,7 @@
 [
   {
     "id": "c9983d78-b94e-4bda-98d5-c459a88d3e7d",
-    "path": "submissions/pending/c9983d78-b94e-4bda-98d5-c459a88d3e7d__Teacher Class Schedule.xlsx",
+    "path": "",
     "fileName": "Teacher Class Schedule.xlsx",
     "size": 67788,
     "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -25,13 +25,13 @@
     "accessibility": "",
     "submittedBy": "teacher",
     "submittedAt": "2026-10-01T07:05:21.048Z",
-    "status": "pending",
-    "reviewedAt": "",
-    "reviewedBy": "",
+    "status": "approved",
+    "reviewedAt": "2026-10-01T07:06:45.723Z",
+    "reviewedBy": "administrator",
     "reviewNote": "",
-    "published": false,
-    "publishedPath": "",
-    "commitUrl": ""
+    "published": true,
+    "publishedPath": "apps/Teacher Class Schedule.xlsx",
+    "commitUrl": "https://github.com/Petgabs/BZFLS/commit/ac02aa985a67883bf3c71f14d26f0112bfc6adfa"
   },
   {
     "id": "265f69a4-c6c0-4177-93e0-aed46a91074f",
