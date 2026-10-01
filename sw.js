@@ -12,7 +12,7 @@
  *   Counter / GitHub API traffic    -> never cached.
  * ------------------------------------------------------------------------- */
 
-const VERSION = 'v1.3.2';
+const VERSION = 'v1.3.3';
 const SHELL_CACHE = `schoolcloud-shell-${VERSION}`;
 const DATA_CACHE = `schoolcloud-data-${VERSION}`;
 const FILE_CACHE = `schoolcloud-files-${VERSION}`;
@@ -32,6 +32,7 @@ const SHELL_ASSETS = [
   './assets/js/lib/submissions.js',
   './assets/js/lib/fileStore.js',
   './assets/js/lib/credentials.js',
+  './assets/js/lib/githubPublish.js',
   './assets/vendor/alpine.min.js',
   './assets/vendor/lucide.min.js'
 ];

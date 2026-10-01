@@ -80,3 +80,8 @@ export const UPLOAD_PREFS_KEY = 'schoolcloud_upload_prefs';
 export const TEACHER_OVERRIDE_KEY = 'schoolcloud_teacher_override';
 export const GITHUB_CONFIG_KEY = 'schoolcloud_github_config';
 export const LIBRARY_CACHE_KEY = 'schoolcloud_library_cache';
+// The administrator's fine-grained GitHub token for auto-publishing approved
+// submissions (Contents: Read and write on the public repository only). Kept
+// in sessionStorage — never localStorage — so closing the tab forgets it, and
+// it is never embedded in this public site. See assets/js/lib/githubPublish.js.
+export const GITHUB_TOKEN_SESSION_KEY = 'schoolcloud_github_token';

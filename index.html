@@ -1081,10 +1081,17 @@
                                     <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i> Download
                                 </button>
                                 <span class="flex-1"></span>
-                                <!-- Administrator review actions -->
+                                <!-- Administrator review actions. With GitHub Auto-Publish
+                                     connected (Settings), approval also commits the file to
+                                     apps/ and merges library.json automatically. -->
                                 <button type="button" x-show="isAdmin" @click="approveSubmission(record.id)"
-                                        class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors focus-ring">
-                                    <i data-lucide="check" class="w-4 h-4" aria-hidden="true"></i> Approve
+                                        :disabled="publishingSubmissionId === record.id"
+                                        class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50 focus-ring">
+                                    <i :data-lucide="publishingSubmissionId === record.id ? 'loader-2' : 'check'"
+                                       class="w-4 h-4" :class="publishingSubmissionId === record.id && 'animate-spin'" aria-hidden="true"></i>
+                                    <span x-text="publishingSubmissionId === record.id
+                                        ? 'Publishing…'
+                                        : (autoPublishReady ? 'Approve & Publish' : 'Approve')"></span>
                                 </button>
                                 <button type="button" x-show="isAdmin" @click="declineSubmission(record.id)"
                                         class="inline-flex items-center gap-2 border border-rose-200 text-rose-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-rose-50 transition-colors focus-ring">
@@ -1129,9 +1136,14 @@
                                x-text="'Administrator’s note: ' + record.reviewNote"></p>
 
                             <p x-show="record.status === 'approved' && record.published"
-                               class="mt-3 text-sm text-sky-700 bg-sky-50 border border-sky-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
+                               class="mt-3 text-sm text-sky-700 bg-sky-50 border border-sky-100 rounded-lg px-3 py-2 inline-flex flex-wrap items-center gap-2">
                                 <i data-lucide="cloud" class="w-4 h-4" aria-hidden="true"></i>
-                                Published to the public repository — available on every device.
+                                <span>Published to the public repository — available on every device.</span>
+                                <a x-show="record.commitUrl" :href="record.commitUrl" target="_blank" rel="noopener noreferrer"
+                                   class="inline-flex items-center gap-1 font-semibold underline decoration-sky-300 hover:decoration-sky-600 focus-ring rounded">
+                                    View the commit
+                                    <i data-lucide="external-link" class="w-3 h-3" aria-hidden="true"></i>
+                                </a>
                             </p>
 
                             <div class="flex flex-wrap gap-2 mt-4">
@@ -1143,8 +1155,17 @@
                                         class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-3.5 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors focus-ring">
                                     <i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i> Preview
                                 </button>
-                                <!-- Administrator: publish the approved resource on GitHub -->
+                                <!-- Administrator: publish the approved resource on GitHub.
+                                     One click with a connected token; the copy/paste flow
+                                     below stays as the manual fallback. -->
                                 <span x-show="isAdmin && record.status === 'approved' && !record.published" class="inline-flex flex-wrap gap-2">
+                                    <button type="button" x-show="githubAuth.connected" @click="publishSubmissionToGithub(record.id)"
+                                            :disabled="publishingSubmissionId === record.id"
+                                            class="inline-flex items-center gap-2 bg-indigo-600 text-white px-3.5 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50 focus-ring">
+                                        <i :data-lucide="publishingSubmissionId === record.id ? 'loader-2' : 'cloud-upload'"
+                                           class="w-4 h-4" :class="publishingSubmissionId === record.id && 'animate-spin'" aria-hidden="true"></i>
+                                        <span x-text="publishingSubmissionId === record.id ? 'Publishing…' : 'Publish to GitHub'"></span>
+                                    </button>
                                     <button type="button" @click="copySubmissionMetadata(record)"
                                             class="inline-flex items-center gap-2 bg-slate-900 text-white px-3.5 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 transition-colors focus-ring">
                                         <i data-lucide="clipboard-copy" class="w-4 h-4" aria-hidden="true"></i> Copy metadata
@@ -1185,7 +1206,7 @@
 
                 <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-lg mb-8 flex gap-3">
                     <i data-lucide="shield-check" class="w-5 h-5 text-emerald-600 flex-shrink-0" aria-hidden="true"></i>
-                    <p class="text-sm text-emerald-800">Public mode reads apps without a Personal Access Token. Credentials are never embedded in the site or saved in browser storage.</p>
+                    <p class="text-sm text-emerald-800">Public mode reads apps without a Personal Access Token, and no credential is ever embedded in the site. The optional auto-publish token below lives in this tab's session only and is forgotten when the tab closes.</p>
                 </div>
 
                 <div class="space-y-6">
@@ -1210,6 +1231,84 @@
                             <i data-lucide="external-link" class="w-3 h-3" aria-hidden="true"></i>
                         </a>
                     </div>
+
+                    <!-- GitHub auto-publish (administrator) -->
+                    <section class="pt-6 border-t" aria-labelledby="github-publish-heading">
+                        <h3 id="github-publish-heading" class="text-sm font-bold text-slate-900 flex items-center gap-2 mb-1">
+                            <i data-lucide="cloud-upload" class="w-4 h-4" aria-hidden="true"></i> GitHub Auto-Publish
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-4">
+                            Connect a GitHub token and approving a submission publishes it automatically: the file is committed to the <code>apps</code> folder and its metadata merged into <code>library.json</code>. Without a token, the manual copy/paste flow keeps working.
+                        </p>
+
+                        <!-- Status -->
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <p class="text-xs text-slate-500">Status</p>
+                                    <p class="font-semibold text-slate-800 mt-0.5"
+                                       x-text="githubAuth.connected
+                                           ? (githubAuth.login ? 'Connected as ' + githubAuth.login : 'Connected')
+                                           : 'Not connected'"></p>
+                                </div>
+                                <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full ring-1"
+                                      :class="githubAuth.connected ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-slate-100 text-slate-500 ring-slate-200'">
+                                    <i :data-lucide="githubAuth.connected ? 'plug-zap' : 'plug'" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    <span x-text="githubAuth.connected ? 'Auto-publish on' : 'Manual publishing'"></span>
+                                </span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-3 leading-relaxed">
+                                The token stays in this tab's session storage only — it is never embedded in the site, never written to permanent storage, and only ever sent to <code>api.github.com</code>. Closing the tab or signing out forgets it.
+                            </p>
+                        </div>
+
+                        <!-- Connect form -->
+                        <div x-show="!githubAuth.connected" class="space-y-3">
+                            <div>
+                                <label for="github-token" class="block text-xs font-medium text-slate-500 mb-1">Fine-grained Personal Access Token</label>
+                                <div class="relative">
+                                    <input id="github-token" :type="githubAuth.showToken ? 'text' : 'password'" x-model="githubAuth.token"
+                                           autocomplete="off" spellcheck="false" placeholder="github_pat_…" aria-describedby="github-token-hint"
+                                           class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm pr-10"
+                                           :class="githubAuth.error ? 'border-red-300' : 'border-slate-200'">
+                                    <button type="button" @click="toggleGithubToken()"
+                                            :aria-label="githubAuth.showToken ? 'Hide the token' : 'Show the token'"
+                                            class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700 rounded-md focus-ring">
+                                        <i :data-lucide="githubAuth.showToken ? 'eye-off' : 'eye'" class="w-4 h-4" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <p id="github-token-hint" class="text-xs text-slate-400 mt-1.5 leading-relaxed">
+                                    Create it on GitHub with access to <strong>only this repository</strong> and the single permission <strong>Contents: Read and write</strong>. Nothing else is needed.
+                                </p>
+                                <p x-show="githubAuth.error" x-text="githubAuth.error" class="text-sm text-red-600 mt-1.5" role="alert"></p>
+                            </div>
+                            <div class="flex flex-col sm:flex-row gap-2">
+                                <button type="button" @click="connectGithub()" :disabled="githubAuth.verifying"
+                                        class="flex-1 inline-flex items-center justify-center gap-2 bg-slate-900 text-white py-2.5 rounded-lg font-bold hover:bg-slate-800 transition-colors disabled:opacity-50 focus-ring">
+                                    <i data-lucide="plug-zap" class="w-4 h-4" :class="githubAuth.verifying && 'animate-pulse'" aria-hidden="true"></i>
+                                    <span x-text="githubAuth.verifying ? 'Verifying…' : 'Connect and verify'"></span>
+                                </button>
+                                <a :href="githubTokenUrl()" target="_blank" rel="noopener noreferrer"
+                                   class="flex-1 inline-flex items-center justify-center gap-2 border border-slate-300 text-slate-700 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors focus-ring">
+                                    <i data-lucide="github" class="w-4 h-4" aria-hidden="true"></i> Create a token on GitHub
+                                    <i data-lucide="external-link" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- Connected -->
+                        <div x-show="githubAuth.connected" x-cloak class="flex flex-col gap-2">
+                            <p class="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
+                                <i data-lucide="check-circle-2" class="w-4 h-4 flex-shrink-0" aria-hidden="true"></i>
+                                Approving a submission now uploads the file and its metadata to GitHub automatically.
+                            </p>
+                            <button type="button" @click="disconnectGithub()"
+                                    class="inline-flex items-center gap-2 text-rose-600 text-sm font-medium hover:bg-rose-50 p-2 rounded-lg transition-colors focus-ring self-start">
+                                <i data-lucide="unplug" class="w-4 h-4" aria-hidden="true"></i>
+                                Disconnect and forget the token
+                            </button>
+                        </div>
+                    </section>
 
                     <!-- Teacher access (administrator) -->
                     <section class="pt-6 border-t" aria-labelledby="teacher-access-heading">
