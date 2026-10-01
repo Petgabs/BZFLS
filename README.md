@@ -22,8 +22,8 @@ GitHub:
 | 3. Classify it | **Subject** and **Year Level** are two required dropdowns with a fixed vocabulary (below) — nothing reaches the library unclassified. |
 | 4. Add the remaining metadata | Title, description, topic, resource type, language, owner, department, academic year, keywords, visibility, version, review date, licence, accessibility notes. Subject/year suggestions are offered automatically. |
 | 5. Automatic preview | A live card preview (exactly how the resource will appear) plus a sandboxed file preview for PDFs and HTML. |
-| 6. Submit for publication | The submission joins the review queue with status *pending*. |
-| 7. Administrator approves | One click in **Review Submissions**. Approved resources enter the library and are searchable immediately; declines record a reason for the teacher. |
+| 6. Submit for publication | The file is uploaded to the school cloud at once — into `submissions/pending/`, **not** the library — and joins the shared review queue with status *pending*. |
+| 7. Administrator approves | One click in **Review Submissions**, from any device. Approving moves the file into `apps/`; declines record a reason for the teacher and delete the staged copy. |
 | 8. Publish everywhere | **Automatic with GitHub Auto-Publish** (Settings): approval commits the file to `apps/` and merges the curated metadata into `library.json` via the GitHub Contents API, and the submission is marked published with a link to the commit. Without a connected token, the manual flow remains: copy the generated `library.json` metadata and upload the file on GitHub. |
 
 ### Classification vocabulary
@@ -179,14 +179,69 @@ Settings panel links straight there.
 
 #### Where teacher uploads go
 
-By default (`REQUIRE_TEACHER_APPROVAL = true`,
-`PUBLISH_TEACHER_UPLOADS_IMMEDIATELY = false`) nothing reaches GitHub until an
-administrator approves it — the shared token simply means approval publishes
-from any device without pasting anything. Setting
-`PUBLISH_TEACHER_UPLOADS_IMMEDIATELY = true` in `assets/js/config.js` makes a
-teacher's submission commit to `apps/` + `library.json` the moment it is
-submitted; the pipeline is already wired up, so that one line is the whole
-change.
+A teacher's upload is sent **straight to GitHub** — into a staging folder, not
+into the library — so an administrator sees it from any device. See
+[The review queue](#the-review-queue-cross-device) below.
+
+Setting `PUBLISH_TEACHER_UPLOADS_IMMEDIATELY = true` in `assets/js/config.js`
+skips review entirely: a submission then commits to `apps/` + `library.json`
+the moment it is made. It is `false` by default, and the default is the
+recommended setting — approval is what keeps the public library curated.
+
+### The review queue (cross-device)
+
+Before this, a submission lived only in the browser that made it: an
+administrator could approve what *they* had uploaded and nothing else. A
+teacher uploading on a classroom laptop was invisible to the administrator at
+home.
+
+Now every upload goes to the repository the moment it is submitted:
+
+```
+submissions/
+  queue.json              metadata + review status of every submission
+  pending/<id>__<file>    the uploaded bytes, waiting for a decision
+```
+
+**This is not the library.** `apps.json` is generated from `apps/` alone, so a
+staged upload is never listed on the dashboard, never searchable, never
+counted and never linked. Approval is the only thing that moves a file into
+`apps/`.
+
+| Action | Repository effect |
+| --- | --- |
+| Teacher submits | file → `submissions/pending/`, entry → `queue.json` as `pending` |
+| Administrator approves | file → `apps/`, metadata → `library.json`, staged copy deleted, entry marked `approved` + `published` |
+| Administrator declines | staged copy deleted, entry kept as `rejected` with the reason, so the teacher can see why |
+| Administrator deletes | staged copy and entry both removed |
+
+Both halves need the shared token to be unlocked, which is the whole reason it
+is stored in the repository: a teacher signing in unlocks it automatically, so
+their upload can reach GitHub without anyone pasting a token.
+
+* **Review Submissions** merges the repository's queue with anything stored in
+  this browser and labels each record *In GitHub Cloud* or *This device*. The
+  banner at the top says which mode you are in, and **Refresh queue** re-reads
+  `submissions/queue.json`.
+* The repository wins on workflow state (status, who reviewed it, whether it
+  is published); the browser wins on where the file bytes are, so a teacher
+  who uploaded on this device keeps a local preview. An administrator
+  reviewing someone else's upload streams the bytes back from the repository
+  for the preview and download buttons.
+* Writes to `queue.json` are read-modify-write with a retry on conflict
+  (`commitJsonWithRetry`), so two teachers submitting at the same moment
+  cannot overwrite each other.
+* With no token unlocked (or no connection), submitting still works — the
+  resource is kept in that browser and reviewable there, exactly as before —
+  and the teacher is told so.
+* `submissions/` is never cached by the service worker: a stale queue would
+  resurrect submissions that another device had already dealt with.
+
+> ⚠️ **The repository is public.** A file in `submissions/pending/` is
+> fetchable by anyone who knows its URL before it has been approved. Approval
+> controls whether a resource is *listed in the library*, not whether its
+> bytes are secret. Do not upload anything confidential — the same caveat as
+> [Visibility](#visibility) below.
 
 ### Changing the teacher login
 
@@ -214,7 +269,9 @@ This is a GitHub Pages site, so there is no server-side account or database:
 
 * Submission **files** are stored as Blobs in the browser's IndexedDB
   (`assets/js/lib/fileStore.js`), with a base64-in-localStorage fallback for
-  locked-down browsers. Metadata lives in localStorage.
+  locked-down browsers. Metadata lives in localStorage — *and*, when a token
+  is unlocked, a copy is staged in the repository so other devices can review
+  it (see [The review queue](#the-review-queue-cross-device)).
 * Approved submissions are searchable **immediately on that device** and
   survive reloads.
 * To reach *every* device, the administrator publishes through GitHub — after
@@ -395,12 +452,14 @@ npm test
 | `tests/metadata.test.js` | Subject/year inference, curated overrides |
 | `tests/submissions.test.js` | Draft validation, the subject/year vocabulary, publishing shapes |
 | `tests/tokenVault.test.js` | Token encryption: no plaintext published, wrong/tampered input refused |
+| `tests/reviewQueue.test.js` | Staging paths, `queue.json` transforms, the local ↔ repository merge rule |
+| `tests/githubPublish.test.js` | The Contents API client, conflict retries and the publish pipeline |
 | `tests/search.test.js` | Query parsing, ranking, facets, sorting |
 | `tests/counters.test.js` | All three backends and the fallback chain |
 | `tests/format.test.js` | Display formatting |
 | `tests/preview.test.js` | Preview strategy and iframe sandboxing |
 | `tests/accessibility.test.js` | axe-core over the expanded markup |
-| `tests/integration.test.js` | Real Alpine + real `index.html` in jsdom, including the full save → unlock → replace → delete cycle for the shared token |
+| `tests/integration.test.js` | Real Alpine + real `index.html` in jsdom: the shared token's save → unlock → replace → delete cycle, and a two-device run of the review queue (teacher submits here, administrator approves from a browser that never saw the file) |
 
 The accessibility suite expands `<template x-for>` blocks and resolves Alpine
 bindings before running axe, so it checks the DOM users actually get rather

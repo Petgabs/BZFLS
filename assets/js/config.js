@@ -115,6 +115,19 @@ export const GITHUB_TOKEN_SOURCE_SESSION_KEY = 'schoolcloud_github_token_source'
 // signing in with the teacher login unlocks it automatically and the public
 // file on its own is useless. See assets/js/lib/tokenVault.js.
 export const CLOUD_TOKEN_PATH = 'assets/data/cloud-token.json';
+
+// --- Cross-device review queue ----------------------------------------------
+//
+// A teacher's upload goes straight into the repository so an administrator on
+// any device can review it — but into a staging area, never into the library.
+// `apps.json` is built from `apps/` alone, so nothing here is listed,
+// searchable or linked on the site until it is approved.
+//
+//   submissions/pending/<id>__<file>   bytes waiting for review
+//   submissions/queue.json             metadata + status of every upload
+//
+// See assets/js/lib/reviewQueue.js.
+export const CLOUD_QUEUE_PATH = 'submissions/queue.json';
 // Short, non-reversible fingerprint of the unlocked token, remembered for the
 // tab so the status panel survives a reload.
 export const CLOUD_TOKEN_FINGERPRINT_SESSION_KEY = 'schoolcloud_cloud_token_fingerprint';

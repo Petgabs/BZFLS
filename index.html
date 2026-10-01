@@ -1104,14 +1104,35 @@
                     <div>
                         <h2 class="text-3xl font-bold text-slate-900" x-text="isAdmin ? 'Review Submissions' : 'My Submissions'"></h2>
                         <p class="text-slate-600 mt-2 max-w-2xl" x-text="isAdmin
-                            ? 'Approve new teacher submissions to publish them to the library immediately, then copy their metadata to publish them on GitHub for every device.'
-                            : 'Resources you submit from this device appear here. An administrator reviews each one before it joins the public library. Teachers cannot delete uploaded files — ask the administrator if a resource needs to be removed.'"></p>
+                            ? 'Every teacher upload lands here, from whichever device it was made. Nothing is in the public library until you approve it — approving moves the file out of the staging folder into the library for every device.'
+                            : 'Resources you submit appear here. Each one is uploaded to the school cloud and waits for an administrator to approve it before it joins the public library. Teachers cannot delete uploaded files — ask the administrator if a resource needs to be removed.'"></p>
                     </div>
-                    <button type="button" @click="openUpload()"
-                            class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm focus-ring">
-                        <i data-lucide="upload" class="w-4 h-4" aria-hidden="true"></i>
-                        Upload Resource
-                    </button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" @click="refreshCloudQueue()" :disabled="cloudQueue.loading"
+                                class="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-4 py-2.5 rounded-lg font-medium hover:bg-slate-50 transition-colors disabled:opacity-50 focus-ring">
+                            <i data-lucide="refresh-cw" class="w-4 h-4" :class="cloudQueue.loading && 'animate-spin'" aria-hidden="true"></i>
+                            <span x-text="cloudQueue.loading ? 'Checking…' : 'Refresh queue'"></span>
+                        </button>
+                        <button type="button" @click="openUpload()"
+                                class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm focus-ring">
+                            <i data-lucide="upload" class="w-4 h-4" aria-hidden="true"></i>
+                            Upload Resource
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Where the queue came from -->
+                <div class="mt-4 rounded-lg border px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
+                     :class="cloudQueue.available
+                         ? 'bg-sky-50 border-sky-100 text-sky-800'
+                         : 'bg-amber-50 border-amber-100 text-amber-800'">
+                    <i :data-lucide="cloudQueue.available ? 'cloud-upload' : 'cloud-off'" class="w-4 h-4 flex-shrink-0" aria-hidden="true"></i>
+                    <span x-text="cloudQueue.available
+                        ? 'Shared queue: uploads from every device are shown here, staged in the repository and out of the public library until approved.'
+                        : 'This device only. Without an unlocked publishing token, uploads stay in this browser and cannot be reviewed elsewhere.'"></span>
+                    <span class="text-xs opacity-75" x-show="cloudQueue.loadedAt" x-cloak
+                          x-text="'Updated ' + new Date(cloudQueue.loadedAt).toLocaleTimeString()"></span>
+                    <span class="text-xs font-medium text-red-700" x-show="cloudQueue.error" x-cloak x-text="cloudQueue.error"></span>
                 </div>
             </div>
 
@@ -1124,7 +1145,7 @@
 
                 <div x-show="pendingSubmissions.length === 0" class="bg-white rounded-xl border border-slate-200 p-10 text-center">
                     <i data-lucide="check-circle-2" class="mx-auto h-10 w-10 text-emerald-500" aria-hidden="true"></i>
-                    <p class="text-slate-500 mt-3">Nothing is waiting. New teacher submissions will appear here.</p>
+                    <p class="text-slate-500 mt-3">Nothing is waiting. New teacher submissions appear here automatically, from any device.</p>
                 </div>
 
                 <ul role="list" class="space-y-5">
@@ -1135,11 +1156,21 @@
                                     <h4 class="font-bold text-slate-900 break-words" x-text="record.title"></h4>
                                     <p class="text-xs text-slate-400 break-all mt-0.5" x-text="record.fileName + ' · ' + formatBytes(record.size)"></p>
                                 </div>
-                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ring-1 flex-shrink-0"
-                                      :class="submissionStatusAccent(record.status)">
-                                    <i data-lucide="clock" class="w-3.5 h-3.5" aria-hidden="true"></i>
-                                    <span x-text="submissionStatusLabel(record.status)"></span>
-                                </span>
+                                <div class="flex items-center gap-2 flex-shrink-0">
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ring-1"
+                                          :class="record.cloudQueued ? 'bg-sky-50 text-sky-700 ring-sky-200' : 'bg-slate-100 text-slate-600 ring-slate-200'"
+                                          :title="record.cloudQueued
+                                              ? 'Staged in the GitHub repository — visible to administrators on every device, and not in the public library'
+                                              : 'Stored in this browser only'">
+                                        <i :data-lucide="record.cloudQueued ? 'cloud' : 'monitor'" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        <span x-text="record.cloudQueued ? 'In GitHub Cloud' : 'This device'"></span>
+                                    </span>
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ring-1"
+                                          :class="submissionStatusAccent(record.status)">
+                                        <i data-lucide="clock" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        <span x-text="submissionStatusLabel(record.status)"></span>
+                                    </span>
+                                </div>
                             </div>
 
                             <div class="flex flex-wrap items-center gap-1.5 mb-3">

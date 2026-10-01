@@ -36,6 +36,7 @@ import {
   GITHUB_TOKEN_SESSION_KEY,
   GITHUB_TOKEN_SOURCE_SESSION_KEY,
   CLOUD_TOKEN_PATH,
+  CLOUD_QUEUE_PATH,
   CLOUD_TOKEN_FINGERPRINT_SESSION_KEY,
   LIBRARY_CACHE_KEY
 } from './config.js';
@@ -118,8 +119,21 @@ import {
   isFineGrainedToken,
   blobToBase64,
   textToBase64,
-  base64ToText
+  base64ToText,
+  commitJsonWithRetry
 } from './lib/githubPublish.js';
+
+import {
+  pendingPathFor,
+  queueEntryFromSubmission,
+  submissionFromQueueEntry,
+  mergeSubmissionLists,
+  mergeQueueEntry,
+  patchQueueEntry,
+  removeQueueEntry,
+  parseQueue,
+  pendingCount
+} from './lib/reviewQueue.js';
 
 import {
   encryptCloudToken,
@@ -257,6 +271,19 @@ export function schoolCloud() {
 
     // --- Submissions -----------------------------------------------------------
     submissions: [],
+
+    // --- Cross-device review queue ---------------------------------------------
+    // Uploads are staged in the repository (submissions/) so an administrator
+    // on any device can review them. Nothing here is in the library: the
+    // public list is built from apps/ alone. See lib/reviewQueue.js.
+    cloudQueue: {
+      loading: false,
+      loadedAt: '',
+      error: '',
+      available: false,   // a queue file was found in the repository
+      count: 0,           // entries waiting for review, as of the last load
+      uploading: false    // a teacher's upload is being staged right now
+    },
 
     // --- Admin Dashboard filter state -----------------------------------------
     dashboardResourceType: 'all',
@@ -907,6 +934,7 @@ export function schoolCloud() {
         this.githubAuth.login = result.login;
         this.githubAuth.source = 'manual';
         this.rememberGithubToken(token, 'manual');
+        this.loadCloudQueue({ silent: true });
       } catch (error) {
         this.githubAuth.connected = false;
         this.githubAuth.login = '';
@@ -1284,6 +1312,8 @@ export function schoolCloud() {
           /* Cosmetic only. */
         }
         if (!silent) this.cloudToken.notice = 'Unlocked. Publishing from this device uses the shared token.';
+        // With a token in hand, the shared review queue becomes readable.
+        this.loadCloudQueue({ silent: true });
         return true;
       } catch (error) {
         // An auto-unlock attempt that fails is not an error the teacher
@@ -1351,13 +1381,222 @@ export function schoolCloud() {
       if (!record) return '';
       if (record.storage === 'idb') {
         const blob = await getFile(record.id);
-        return blob ? blobToBase64(blob) : '';
+        if (blob) return blobToBase64(blob);
       }
       if (record.storage === 'inline' && record.inlineData) {
         const comma = record.inlineData.indexOf(',');
-        return comma >= 0 ? record.inlineData.slice(comma + 1).replace(/\s+/g, '') : '';
+        if (comma >= 0) return record.inlineData.slice(comma + 1).replace(/\s+/g, '');
+      }
+      // Staged in the repository by another device (or by this one before the
+      // browser store was cleared) — read it back out of GitHub.
+      if (record.cloudPath && this.githubAuth.connected) {
+        const file = await this.buildGithubPublisher().getFileBase64(record.cloudPath);
+        if (file.exists) return file.base64;
       }
       return '';
+    },
+
+    // --- Cross-device review queue ---------------------------------------------
+    //
+    // A teacher's upload is committed to `submissions/pending/` and indexed in
+    // `submissions/queue.json` the moment it is submitted, so an administrator
+    // on any device sees it in Review Submissions. It is NOT in the library:
+    // apps.json is built from `apps/` alone, so a staged upload is not listed,
+    // searchable or linked anywhere until approval moves it into `apps/`.
+
+    /** True when uploads can be staged in (and reviewed from) the repository. */
+    get cloudReviewReady() {
+      return this.githubAuth.connected && !this.offline;
+    },
+
+    /**
+     * Stage a teacher's upload in the repository: the bytes go to
+     * `submissions/pending/`, the metadata into `submissions/queue.json`.
+     * Returns true when the upload reached GitHub.
+     */
+    async uploadSubmissionToCloudQueue(record) {
+      if (!record || !this.cloudReviewReady) return false;
+
+      this.cloudQueue.uploading = true;
+      try {
+        const fileBase64 = await this.submissionBase64(record);
+        if (!fileBase64) throw new Error('The selected file could not be read back for upload.');
+
+        const publisher = this.buildGithubPublisher();
+        const path = pendingPathFor(record);
+
+        // 1. The bytes. A re-submission with the same id simply replaces it.
+        const existing = await publisher.getFile(path);
+        await publisher.putFile({
+          path,
+          contentBase64: fileBase64,
+          sha: existing.exists ? existing.sha : '',
+          message: `Submit for review: ${record.title} (via School Cloud System)`
+        });
+
+        // 2. The queue entry, written with a retry so two teachers submitting
+        //    at the same moment cannot overwrite each other.
+        const entry = queueEntryFromSubmission(record, { path });
+        await commitJsonWithRetry(publisher, {
+          path: CLOUD_QUEUE_PATH,
+          message: `Queue “${record.title}” for review (via School Cloud System)`,
+          transform: currentText => mergeQueueEntry(currentText, entry)
+        });
+
+        record.cloudPath = path;
+        record.cloudQueued = true;
+        record.queuedAt = new Date().toISOString();
+        this.saveSubmissions();
+        this.cloudQueue.available = true;
+        return true;
+      } catch (error) {
+        console.warn('Staging the submission in the repository failed.', error);
+        this.cloudQueue.error = error.message || 'The upload could not be sent to the school cloud.';
+        return false;
+      } finally {
+        this.cloudQueue.uploading = false;
+        this.$nextTick(() => refreshIcons());
+      }
+    },
+
+    /** Read queue.json: the deployed site first, the API as the fallback. */
+    async fetchCloudQueue() {
+      try {
+        const response = await fetch(`./${CLOUD_QUEUE_PATH}?refresh=${Date.now()}`, { cache: 'no-store' });
+        if (response.ok) return parseQueue(await response.text());
+      } catch (error) {
+        console.warn('The deployed review queue was unavailable.', error);
+      }
+
+      // Not deployed yet (GitHub Pages lags a commit by a minute or two), so
+      // ask the API — authenticated when possible, to dodge the rate limit.
+      const repo = this.normalizeRepository(this.githubConfig.repo) || DEFAULT_GITHUB_REPO;
+      const [owner, repository] = repo.split('/');
+      const path = CLOUD_QUEUE_PATH.split('/').map(encodeURIComponent).join('/');
+      const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/contents/${path}?ref=main`;
+      const headers = { Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28' };
+      if (this.githubAuth.connected && this.githubAuth.token) {
+        headers.Authorization = `Bearer ${this.githubAuth.token}`;
+      }
+
+      try {
+        const response = await fetch(endpoint, { cache: 'no-store', headers });
+        if (!response.ok) return null;
+        const body = await response.text();
+        const direct = parseQueue(body);
+        if (direct.length) return direct;
+        try {
+          const envelope = JSON.parse(body);
+          if (envelope?.encoding === 'base64' && envelope.content) {
+            return parseQueue(base64ToText(envelope.content));
+          }
+        } catch {
+          /* Not the JSON envelope. */
+        }
+        return direct;
+      } catch (error) {
+        console.warn('Could not read the review queue from the GitHub API.', error);
+        return null;
+      }
+    },
+
+    /**
+     * Pull the repository's queue in and merge it with this browser's own
+     * submissions, so Review Submissions shows every teacher's uploads
+     * regardless of which device made them.
+     */
+    async loadCloudQueue(options = {}) {
+      if (this.cloudQueue.loading) return false;
+      this.cloudQueue.loading = true;
+      if (!options.silent) this.cloudQueue.error = '';
+
+      try {
+        const entries = await this.fetchCloudQueue();
+        if (entries === null) {
+          this.cloudQueue.available = false;
+          return false;
+        }
+
+        this.submissions = mergeSubmissionLists(this.submissions, entries);
+        this.saveSubmissions();
+
+        // An entry approved and published elsewhere must not linger as a
+        // local library card; the repository copy is the canonical one.
+        for (const record of this.submissions) {
+          if (record.published) this.apps = this.apps.filter(app => app.submissionId !== record.id);
+        }
+        this.saveApps();
+
+        this.cloudQueue.available = true;
+        this.cloudQueue.count = pendingCount(entries);
+        this.cloudQueue.loadedAt = new Date().toISOString();
+        return true;
+      } catch (error) {
+        console.warn('The review queue could not be loaded.', error);
+        this.cloudQueue.error = error.message || 'The review queue could not be loaded.';
+        return false;
+      } finally {
+        this.cloudQueue.loading = false;
+        this.$nextTick(() => refreshIcons());
+      }
+    },
+
+    /** Manual refresh button in Review Submissions. */
+    async refreshCloudQueue() {
+      if (!this.requireStaff()) return;
+      const loaded = await this.loadCloudQueue();
+      if (!loaded && !this.cloudQueue.error) {
+        this.cloudQueue.error = 'No shared review queue was found in the repository yet.';
+      }
+    },
+
+    /** Patch one entry in the repository's queue (status, review notes…). */
+    async patchCloudQueueEntry(record, changes) {
+      if (!record?.cloudQueued || !this.githubAuth.connected) return false;
+      try {
+        const result = await commitJsonWithRetry(this.buildGithubPublisher(), {
+          path: CLOUD_QUEUE_PATH,
+          message: `Update review status for “${record.title}” (via School Cloud System)`,
+          transform: currentText => patchQueueEntry(currentText, record.id, changes)
+        });
+        return result.changed;
+      } catch (error) {
+        console.warn('The review queue could not be updated.', error);
+        return false;
+      }
+    },
+
+    /** Remove a staged file and its queue entry from the repository. */
+    async removeFromCloudQueue(record, { keepEntry = false, message = '' } = {}) {
+      if (!record?.cloudPath || !this.githubAuth.connected) return false;
+      const publisher = this.buildGithubPublisher();
+
+      try {
+        const staged = await publisher.getFile(record.cloudPath);
+        if (staged.exists) {
+          await publisher.deleteFile({
+            path: record.cloudPath,
+            sha: staged.sha,
+            message: message || `Remove staged upload ${record.cloudPath} (via School Cloud System)`
+          });
+        }
+      } catch (error) {
+        console.warn('The staged file could not be deleted.', error);
+        return false;
+      }
+
+      if (keepEntry) return true;
+
+      try {
+        await commitJsonWithRetry(publisher, {
+          path: CLOUD_QUEUE_PATH,
+          message: `Remove “${record.title}” from the review queue (via School Cloud System)`,
+          transform: currentText => removeQueueEntry(currentText, record.id)
+        });
+      } catch (error) {
+        console.warn('The queue entry could not be removed.', error);
+      }
+      return true;
     },
 
     /**
@@ -1426,6 +1665,30 @@ export function schoolCloud() {
         record.publishedPath = result.path;
         record.commitUrl = result.commitUrl;
         this.apps = this.apps.filter(app => app.submissionId !== record.id);
+
+        // The file now lives in apps/, so the staging copy is redundant:
+        // delete it and record the outcome in the shared queue, which is how
+        // every other device learns the submission was approved.
+        if (record.cloudQueued) {
+          if (record.cloudPath) {
+            const staged = record.cloudPath;
+            const removed = await this.removeFromCloudQueue(record, {
+              keepEntry: true,
+              message: `Approved — remove staged copy ${staged} (via School Cloud System)`
+            });
+            if (removed) record.cloudPath = '';
+          }
+          await this.patchCloudQueueEntry(record, {
+            status: 'approved',
+            reviewedAt: record.reviewedAt || new Date().toISOString(),
+            reviewedBy: record.reviewedBy || 'administrator',
+            published: true,
+            publishedPath: record.publishedPath,
+            commitUrl: record.commitUrl,
+            path: ''
+          });
+        }
+
         this.saveSubmissions();
         this.saveApps();
         this.syncFromGithub({ silent: true }).then(() => this.loadOverrides());
@@ -1887,14 +2150,10 @@ export function schoolCloud() {
           this.saveApps();
         }
 
-        // 4. Optional: send a teacher's upload straight to the repository.
-        //    Off by default (PUBLISH_TEACHER_UPLOADS_IMMEDIATELY = false), so
-        //    nothing reaches GitHub until an administrator approves it. When
-        //    a school turns it on, the shared cloud token unlocked at
-        //    sign-in is what does the commit.
+        // 4a. Optional: skip review entirely and publish straight to the
+        //     library. Off by default (PUBLISH_TEACHER_UPLOADS_IMMEDIATELY).
         let cloudPublished = false;
-        if (record.status === 'pending' && PUBLISH_TEACHER_UPLOADS_IMMEDIATELY &&
-            this.githubAuth.connected && !this.offline) {
+        if (record.status === 'pending' && PUBLISH_TEACHER_UPLOADS_IMMEDIATELY && this.cloudReviewReady) {
           cloudPublished = await this.pushSubmissionToRepository(record);
           if (cloudPublished) {
             record.status = 'approved';
@@ -1903,6 +2162,15 @@ export function schoolCloud() {
             record.reviewNote = 'Published automatically — this school publishes teacher uploads straight to the public repository.';
             this.saveSubmissions();
           }
+        }
+
+        // 4b. The normal path: stage the upload in the repository so an
+        //     administrator on ANY device can review it. It goes to
+        //     submissions/, never to apps/, so it stays out of the library
+        //     until it is approved.
+        let staged = false;
+        if (!cloudPublished && record.status === 'pending') {
+          staged = await this.uploadSubmissionToCloudQueue(record);
         }
 
         this.rememberUploadPrefs();
@@ -1914,9 +2182,15 @@ export function schoolCloud() {
         } else if (record.status === 'approved') {
           this.currentView = 'library';
           alert(`Published. “${record.title}” is now in the library and searchable immediately.`);
+        } else if (staged) {
+          this.currentView = 'submissions';
+          alert(`Sent to the school cloud for review.\n\n“${record.title}” was uploaded to GitHub and is now in the administrator's review queue — on every device, not just this one.\n\nIt is NOT in the public library yet: students will only see it once an administrator approves it.`);
         } else {
           this.currentView = 'submissions';
-          alert(`Submitted for review. “${record.title}” will appear in the public library once an administrator approves it. You can track its status on this page.`);
+          const reason = this.cloudQueue.error
+            ? `\n\nIt could not be sent to the school cloud (${this.cloudQueue.error}), so for now it is saved on this device only — an administrator must review it here, or you can submit again once the connection is back.`
+            : '\n\nIt is saved on this device only: no shared publishing token is unlocked, so an administrator must review it in this browser. Ask the administrator to save a token in Settings → GitHub Auto-Publish.';
+          alert(`Submitted for review. “${record.title}” will appear in the public library once an administrator approves it.${reason}`);
         }
       } finally {
         this.submitting = false;
@@ -1962,6 +2236,9 @@ export function schoolCloud() {
     openSubmissions() {
       if (!this.requireStaff()) return;
       this.currentView = 'submissions';
+      // Pull in uploads staged by other devices, so the queue is the whole
+      // school's and not just this browser's.
+      this.loadCloudQueue({ silent: true });
       this.$nextTick(() => refreshIcons());
     },
 
@@ -1977,10 +2254,21 @@ export function schoolCloud() {
       const record = this.submissions.find(item => item.id === id);
       if (!record || record.status !== 'pending') return;
 
+      // A submission staged in the repository has no bytes on this device,
+      // so approval must reach GitHub — otherwise "approved" would mean
+      // nothing and the file would stay in the staging folder forever.
+      if (record.cloudPath && !this.githubAuth.connected) {
+        this.currentView = 'settings';
+        alert(`“${record.title}” was uploaded from another device, so approving it needs a GitHub connection.\n\nUnlock the shared token in Settings → GitHub Auto-Publish and try again.`);
+        return;
+      }
+
       record.status = 'approved';
       record.reviewedAt = new Date().toISOString();
       record.reviewedBy = 'administrator';
-      this.addApprovedToLibrary(record);
+      // Only a locally-stored file can be shown from this browser; a staged
+      // upload becomes a library card once it has been moved into apps/.
+      if (!record.cloudPath) this.addApprovedToLibrary(record);
       this.saveSubmissions();
       this.saveApps();
       this.$nextTick(() => refreshIcons());
@@ -1991,7 +2279,7 @@ export function schoolCloud() {
       if (this.autoPublishReady) {
         const published = await this.publishSubmissionToGithub(id);
         if (published) {
-          alert(`Approved and published. “${record.title}” was uploaded to the apps folder and its metadata merged into library.json — it will appear on every device once GitHub Pages redeploys (usually 1–2 minutes).`);
+          alert(`Approved and published. “${record.title}” was moved into the apps folder and its metadata merged into library.json — it will appear on every device once GitHub Pages redeploys (usually 1–2 minutes).`);
           return;
         }
         // publishSubmissionToGithub already explained the failure.
@@ -2001,7 +2289,7 @@ export function schoolCloud() {
       alert(`Approved. “${record.title}” is now in the library and searchable immediately.\n\nTo make it appear on every device, connect GitHub Auto-Publish in Settings — or upload the file to the apps folder on GitHub and paste the copied metadata into library.json (use “Copy metadata” next to the submission).`);
     },
 
-    declineSubmission(id) {
+    async declineSubmission(id) {
       if (!this.requireAdmin()) return;
       const record = this.submissions.find(item => item.id === id);
       if (!record || record.status === 'rejected') return;
@@ -2017,6 +2305,27 @@ export function schoolCloud() {
       this.saveSubmissions();
       this.saveApps();
       this.$nextTick(() => refreshIcons());
+
+      // A declined upload must not be left sitting in the repository: delete
+      // the staged file, but keep the queue entry so the teacher sees why.
+      if (record.cloudQueued && this.githubAuth.connected) {
+        if (record.cloudPath) {
+          const removed = await this.removeFromCloudQueue(record, {
+            keepEntry: true,
+            message: `Decline ${record.cloudPath} (via School Cloud System)`
+          });
+          if (removed) record.cloudPath = '';
+        }
+        await this.patchCloudQueueEntry(record, {
+          status: 'rejected',
+          reviewNote: record.reviewNote,
+          reviewedAt: record.reviewedAt,
+          reviewedBy: record.reviewedBy,
+          path: ''
+        });
+        this.saveSubmissions();
+        this.$nextTick(() => refreshIcons());
+      }
     },
 
     /** Permanently remove a submission and its stored file (admin only). */
@@ -2041,6 +2350,18 @@ export function schoolCloud() {
             return;
           }
         } else if (!confirm(`Permanently remove “${record.title}” from this device?\n\nIt was already published to “${path}” on GitHub — connect GitHub Auto-Publish in Settings to also delete it from the repository, or remove it manually on github.com.`)) {
+          return;
+        }
+      } else if (record.cloudQueued) {
+        // Staged in the repository and awaiting review: removing it here must
+        // remove it there too, or the queue would keep showing a ghost.
+        if (!this.githubAuth.connected) {
+          alert(`“${record.title}” is waiting for review in the repository, so removing it needs a GitHub connection.\n\nUnlock the shared token in Settings → GitHub Auto-Publish and try again.`);
+          return;
+        }
+        if (!confirm(`Permanently remove “${record.title}”? The staged file and its review-queue entry are deleted from GitHub, so it disappears for every device. This cannot be undone.`)) return;
+        if (!(await this.removeFromCloudQueue(record))) {
+          alert(`Removing “${record.title}” from the repository failed, so nothing was changed. You can retry.`);
           return;
         }
       } else if (!confirm(`Permanently remove “${record.title}”? The stored file will be deleted from this device.`)) {
@@ -2076,13 +2397,27 @@ export function schoolCloud() {
       if (typeof URL.createObjectURL !== 'function') return '';
       if (record.storage === 'idb') {
         const blob = await getFile(record.id);
-        return blob ? URL.createObjectURL(blob) : '';
+        if (blob) return URL.createObjectURL(blob);
       }
       if (record.storage === 'inline' && record.inlineData) {
         try {
           const response = await fetch(record.inlineData);
           return URL.createObjectURL(await response.blob());
         } catch {
+          /* Fall through to the repository copy. */
+        }
+      }
+      // Staged in the repository: fetch the bytes so an administrator can
+      // preview and download an upload made on someone else's device.
+      if (record.cloudPath && this.githubAuth.connected) {
+        try {
+          const file = await this.buildGithubPublisher().getFileBase64(record.cloudPath);
+          if (!file.exists || !file.base64) return '';
+          const binary = atob(file.base64);
+          const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+          return URL.createObjectURL(new Blob([bytes], { type: record.mime || 'application/octet-stream' }));
+        } catch (error) {
+          console.warn('The staged file could not be fetched from the repository.', error);
           return '';
         }
       }

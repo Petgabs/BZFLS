@@ -50,7 +50,12 @@ beforeAll(async () => {
 
   // Install the real markup into the jsdom document this test runs in, so
   // Alpine walks exactly the DOM that ships to users.
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  //
+  // One deliberate exception: `x-transition`. jsdom runs no CSS transitions,
+  // so they test nothing here — but switching view twice in quick succession
+  // leaves Alpine with a cancelled-transition promise nobody awaits, which
+  // surfaces as an unhandled rejection and would drown out real failures.
+  const bodyMatch = html.replace(/\sx-transition\b/g, '').match(/<body[^>]*>([\s\S]*)<\/body>/i);
   const bodyAttrs = html.match(/<body([^>]*)>/i)[1];
   document.body.innerHTML = bodyMatch[1];
   for (const attribute of bodyAttrs.matchAll(/([\w:@.-]+)="([^"]*)"/g)) {
@@ -932,5 +937,344 @@ describe('shared cloud publishing token', () => {
     expect(component.cloudToken.unlocked).toBe(false);
     expect(component.cloudToken.fingerprint).toHaveLength(12);
     expect(component.cloudTokenStatusLabel).toMatch(/locked/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The cross-device review queue.
+//
+// The point of this feature: a teacher uploads on a classroom laptop and the
+// administrator reviews it at home. These tests run both halves against a
+// simulated repository — a teacher's submit writes real files into it, and a
+// "second device" is modelled by wiping this browser's local submissions and
+// reloading purely from that repository.
+// ---------------------------------------------------------------------------
+
+describe('cross-device review queue', () => {
+  const TOKEN = 'github_pat_11QUEUE000examplevalue_AA1';
+  const QUEUE_PATH = 'submissions/queue.json';
+
+  /** The repository, as a path → utf8-text map. */
+  let repo;
+  let commits;
+
+  function b64(text) {
+    return Buffer.from(text, 'utf8').toString('base64');
+  }
+  function unb64(content) {
+    return Buffer.from(content, 'base64').toString('utf8');
+  }
+  /** Decode the API path out of a contents URL. */
+  function apiPath(href) {
+    const match = href.match(/\/contents\/([^?]+)/);
+    return match ? decodeURIComponent(match[1].split('/').map(decodeURIComponent).join('/')) : '';
+  }
+
+  function repoFetchStub() {
+    return vi.fn(async (url, options = {}) => {
+      const href = String(url);
+      const method = options.method || 'GET';
+
+      // The deployed site (GitHub Pages) serving queue.json.
+      if (href.includes(QUEUE_PATH) && href.includes('refresh=')) {
+        return repo.has(QUEUE_PATH)
+          ? { ok: true, status: 200, text: async () => repo.get(QUEUE_PATH) }
+          : { ok: false, status: 404, text: async () => 'Not Found' };
+      }
+
+      if (href.includes('/contents/')) {
+        const path = apiPath(href);
+        if (method === 'PUT') {
+          const body = JSON.parse(options.body);
+          repo.set(path, unb64(body.content));
+          commits.push({ method, path, message: body.message });
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              content: { sha: `sha-${path}` },
+              commit: { sha: 'c1', html_url: `https://github.test/commit/${encodeURIComponent(path)}` }
+            })
+          };
+        }
+        if (method === 'DELETE') {
+          const body = JSON.parse(options.body);
+          repo.delete(path);
+          commits.push({ method, path, message: body.message });
+          return { ok: true, status: 200, json: async () => ({ commit: { sha: 'c2', html_url: 'https://github.test/commit/del' } }) };
+        }
+        if (!repo.has(path)) {
+          return { ok: false, status: 404, text: async () => 'Not Found', json: async () => ({ message: 'Not Found' }) };
+        }
+        const envelope = {
+          sha: `sha-${path}`,
+          size: repo.get(path).length,
+          encoding: 'base64',
+          content: b64(repo.get(path))
+        };
+        return { ok: true, status: 200, text: async () => JSON.stringify(envelope), json: async () => envelope };
+      }
+
+      if (href.endsWith('/repos/Petgabs/BZFLS')) {
+        return { ok: true, status: 200, json: async () => ({ full_name: 'Petgabs/BZFLS', permissions: { push: true } }) };
+      }
+      if (href.includes('apps.json')) return { ok: true, status: 200, json: async () => MANIFEST };
+      throw new Error('network disabled in tests');
+    });
+  }
+
+  /** Files committed under apps/ — i.e. what the public library can see. */
+  const publishedFiles = () => [...repo.keys()].filter(path => path.startsWith('apps/'));
+  const stagedFiles = () => [...repo.keys()].filter(path => path.startsWith('submissions/pending/'));
+  const queue = () => JSON.parse(repo.get(QUEUE_PATH) || '[]');
+
+  beforeAll(() => {
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: () => 'blob:mock-url' });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: () => {} });
+  });
+
+  beforeEach(() => {
+    repo = new Map();
+    commits = [];
+    vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'confirm').mockImplementation(() => true);
+    vi.spyOn(globalThis, 'prompt').mockImplementation(() => 'Needs an answer key.');
+    vi.stubGlobal('fetch', repoFetchStub());
+
+    component.submissions = [];
+    component.apps = component.apps.filter(app => !app.submissionId);
+    component.cloudQueue = { loading: false, loadedAt: '', error: '', available: false, count: 0, uploading: false };
+    component.githubConfig.repo = 'Petgabs/BZFLS';
+    component.githubAuth.token = TOKEN;
+    component.githubAuth.connected = true;
+    component.githubAuth.login = 'petgabs';
+    component.offline = false;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    component.githubAuth.connected = false;
+    component.githubAuth.token = '';
+  });
+
+  /**
+   * Fill a form field the way a teacher would — through the DOM, so Alpine's
+   * x-model carries the value into the draft. (Assigning `component.draft`
+   * directly is fragile here: x-model also re-reads the inputs one tick after
+   * the form is reset at the end of a submit, which would wipe a draft set
+   * programmatically in the same tick.)
+   */
+  function fill(id, value) {
+    const field = document.getElementById(id);
+    field.value = value;
+    field.dispatchEvent(new window.Event('input', { bubbles: true }));
+    field.dispatchEvent(new window.Event('change', { bubbles: true }));
+  }
+
+  /** A teacher uploads a worksheet from their own device. */
+  async function teacherSubmits(title = 'Trigonometry Revision', fileName = 'trig.pdf') {
+    component.role = 'teacher';
+    component.openUpload();
+    component.ingestFile(new File(['%PDF-1.4 trig'], fileName, { type: 'application/pdf' }));
+    fill('resource-title', title);
+    fill('resource-description', 'Revision questions with answers.');
+    fill('resource-subject', 'Mathematics');
+    fill('resource-years', 'Year 11');
+    fill('resource-owner', 'Ms Okafor');
+    fill('resource-keywords', 'trigonometry');
+    await component.submitResource();
+    const record = component.submissions.find(item => item.title === title);
+    expect(record, `the teacher's submission "${title}" was not created`).toBeTruthy();
+    return record;
+  }
+
+  it('sends a teacher upload to GitHub, into staging and not into the library', async () => {
+    const record = await teacherSubmits();
+
+    expect(record.cloudQueued).toBe(true);
+    expect(record.cloudPath).toBe(`submissions/pending/${record.id}__trig.pdf`);
+    expect(stagedFiles()).toEqual([record.cloudPath]);
+
+    // Crucially: nothing under apps/, so apps.json cannot list it.
+    expect(publishedFiles()).toEqual([]);
+    expect(repo.has('library.json')).toBe(false);
+    expect(component.apps.some(app => app.submissionId === record.id)).toBe(false);
+
+    // And the queue records it as waiting.
+    expect(queue()).toHaveLength(1);
+    expect(queue()[0]).toMatchObject({ id: record.id, title: 'Trigonometry Revision', status: 'pending' });
+    expect(component.cloudQueue.available).toBe(true);
+  });
+
+  it('keeps the file bytes out of queue.json', async () => {
+    await teacherSubmits();
+    expect(repo.get(QUEUE_PATH)).not.toContain('%PDF');
+    expect(queue()[0].inlineData).toBeUndefined();
+  });
+
+  it('is still invisible to students and unsearchable while it waits', async () => {
+    const record = await teacherSubmits();
+    component.clearFilters();
+    component.filters.query = 'trigonometry revision';
+    expect(component.filteredApps.filter(app => app.submissionId === record.id)).toHaveLength(0);
+    component.clearFilters();
+  });
+
+  it('shows up on a second device that never saw the upload', async () => {
+    const record = await teacherSubmits();
+
+    // A different browser: no local submissions at all, just the repository.
+    component.submissions = [];
+    await component.loadCloudQueue();
+
+    expect(component.submissions).toHaveLength(1);
+    const seen = component.submissions[0];
+    expect(seen.id).toBe(record.id);
+    expect(seen.title).toBe('Trigonometry Revision');
+    expect(seen.origin).toBe('cloud');
+    expect(seen.cloudQueued).toBe(true);
+    expect(seen.cloudPath).toBe(record.cloudPath);
+    expect(component.pendingSubmissions).toHaveLength(1);
+    expect(component.cloudQueue.count).toBe(1);
+    expect(component.cloudQueue.loadedAt).toBeTruthy();
+  });
+
+  it('can fetch the staged bytes for a preview it never stored locally', async () => {
+    const record = await teacherSubmits();
+    component.submissions = [];
+    await component.loadCloudQueue();
+
+    const url = await component.submissionObjectUrl(component.submissions[0]);
+    expect(url).toBe('blob:mock-url');
+    expect(record.cloudPath in Object.fromEntries(repo)).toBe(true);
+  });
+
+  it('refuses to approve another device\u2019s upload without a GitHub connection', async () => {
+    await teacherSubmits();
+    component.submissions = [];
+    await component.loadCloudQueue();
+
+    component.role = 'admin';
+    component.githubAuth.connected = false;
+    await component.approveSubmission(component.submissions[0].id);
+
+    expect(component.submissions[0].status).toBe('pending');
+    expect(component.currentView).toBe('settings');
+    expect(publishedFiles()).toEqual([]);
+  });
+
+  it('approving from the second device publishes it and clears the staging folder', async () => {
+    const record = await teacherSubmits();
+    component.submissions = [];
+    await component.loadCloudQueue();
+
+    component.role = 'admin';
+    await component.approveSubmission(record.id);
+
+    // The file moved from staging into the library folder…
+    expect(publishedFiles()).toEqual(['apps/trig.pdf']);
+    expect(stagedFiles()).toEqual([]);
+    // …its metadata reached library.json…
+    expect(JSON.parse(repo.get('library.json'))['apps/trig.pdf']).toMatchObject({ subject: 'Mathematics' });
+    // …and the queue tells every other device the outcome.
+    expect(queue()[0]).toMatchObject({
+      id: record.id,
+      status: 'approved',
+      published: true,
+      publishedPath: 'apps/trig.pdf',
+      path: ''
+    });
+    expect(component.cloudQueue.count).toBe(1); // not refreshed yet on this device
+  });
+
+  it('tells the teacher\u2019s own device that the upload was approved', async () => {
+    const record = await teacherSubmits();
+    const teacherCopy = [{ ...record }];
+
+    component.submissions = [];
+    await component.loadCloudQueue();
+    component.role = 'admin';
+    await component.approveSubmission(record.id);
+
+    // Back on the teacher's laptop: a plain refresh picks up the decision.
+    component.submissions = teacherCopy;
+    await component.loadCloudQueue();
+    expect(component.submissions[0]).toMatchObject({ status: 'approved', published: true });
+    expect(component.cloudQueue.count).toBe(0);
+  });
+
+  it('declining deletes the staged file but keeps the reason in the queue', async () => {
+    const record = await teacherSubmits();
+    component.submissions = [];
+    await component.loadCloudQueue();
+
+    component.role = 'admin';
+    await component.declineSubmission(record.id);
+
+    expect(stagedFiles()).toEqual([]);
+    expect(publishedFiles()).toEqual([]);
+    expect(queue()[0]).toMatchObject({
+      id: record.id,
+      status: 'rejected',
+      reviewNote: 'Needs an answer key.',
+      path: ''
+    });
+
+    // The teacher sees why, from any device.
+    component.submissions = [];
+    await component.loadCloudQueue();
+    expect(component.submissions[0].reviewNote).toBe('Needs an answer key.');
+  });
+
+  it('deleting removes both the staged file and the queue entry', async () => {
+    const record = await teacherSubmits();
+    component.submissions = [];
+    await component.loadCloudQueue();
+
+    component.role = 'admin';
+    await component.deleteSubmission(record.id);
+
+    expect(stagedFiles()).toEqual([]);
+    expect(queue()).toEqual([]);
+    expect(component.submissions).toHaveLength(0);
+  });
+
+  it('keeps two teachers\u2019 simultaneous uploads side by side', async () => {
+    const first = await teacherSubmits('Forces Recap', 'forces.pdf');
+    const second = await teacherSubmits('Essay Structure', 'essay.pdf');
+
+    expect(stagedFiles()).toHaveLength(2);
+    expect(queue().map(entry => entry.id).sort()).toEqual([first.id, second.id].sort());
+
+    component.submissions = [];
+    await component.loadCloudQueue();
+    expect(component.pendingSubmissions).toHaveLength(2);
+    expect(component.cloudQueue.count).toBe(2);
+  });
+
+  it('falls back to this device when the upload cannot reach GitHub', async () => {
+    component.githubAuth.connected = false;
+    const record = await teacherSubmits('Offline Worksheet', 'offline.pdf');
+
+    expect(record.status).toBe('pending');
+    expect(record.cloudQueued).toBeFalsy();
+    expect(repo.size).toBe(0);
+    // Still reviewable locally, so the teacher's work is never lost.
+    expect(component.pendingSubmissions.some(item => item.id === record.id)).toBe(true);
+  });
+
+  it('reports a missing queue instead of inventing one', async () => {
+    component.submissions = [];
+    const loaded = await component.loadCloudQueue();
+    expect(loaded).toBe(false);
+    expect(component.cloudQueue.available).toBe(false);
+    expect(component.submissions).toEqual([]);
+  });
+
+  it('survives a corrupt queue.json without losing local submissions', async () => {
+    const record = await teacherSubmits();
+    repo.set(QUEUE_PATH, '{ this is not json');
+    await component.loadCloudQueue();
+    expect(component.submissions.some(item => item.id === record.id)).toBe(true);
   });
 });
