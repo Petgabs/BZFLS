@@ -50,5 +50,17 @@
     "language": "English",
     "owner": "Peter",
     "version": "1.0"
+  },
+  "apps/Teacher Class Schedule.xlsx": {
+    "title": "Class schedule",
+    "description": "Study",
+    "subject": "Mathematics",
+    "years": [
+      10
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "version": "1.0"
   }
 }
