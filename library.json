@@ -155,5 +155,19 @@
     "department": "Mathematics",
     "version": "1.0",
     "addedAt": "2026-10-01T13:00:09.195Z"
+  },
+  "apps/PEM 2025-solutions.pdf": {
+    "title": "PEM 2025-SOLUTIONS",
+    "description": "",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0",
+    "addedAt": "2026-10-01T13:03:13.203Z"
   }
 }
