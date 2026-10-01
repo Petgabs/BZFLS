@@ -183,5 +183,19 @@
     "department": "Mathematics",
     "version": "1.0",
     "addedAt": "2026-10-01T13:09:25.496Z"
+  },
+  "apps/Killara 2026 2U Trials & Solutions.pdf": {
+    "title": "Killara 2026 2U Trials & Solutions — 3 hrs paper",
+    "description": "",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0",
+    "addedAt": "2026-10-01T13:08:27.802Z"
   }
 }
