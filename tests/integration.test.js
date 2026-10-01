@@ -272,6 +272,131 @@ describe('previews', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Resource Statistics: the Admin Dashboard section that reports teacher
+// activity, year/subject coverage, cloud storage and upload freshness. Runs
+// against the real DOM and the real Alpine bundle, not just the pure
+// aggregation functions (covered separately in resourceStats.test.js).
+// ---------------------------------------------------------------------------
+
+describe('resource statistics (admin dashboard)', () => {
+  let previousSubmissions;
+  let previousRole;
+  const DAY = 24 * 60 * 60 * 1000;
+
+  beforeAll(() => {
+    previousSubmissions = component.submissions;
+    previousRole = component.role;
+    component.role = 'admin';
+
+    const scheduleApp = component.apps.find(app => app.fileName.includes('class schedule'));
+    const algebraApp = component.apps.find(app => app.fileName.includes('algebra'));
+
+    component.submissions = [
+      {
+        id: 'sub-schedule',
+        fileName: scheduleApp.fileName,
+        publishedPath: scheduleApp.githubPath,
+        owner: 'Peter',
+        subject: 'Mathematics',
+        years: [10, 11],
+        size: 500000,
+        submittedAt: new Date(Date.now() - 5 * DAY).toISOString(),
+        status: 'approved',
+        published: true
+      },
+      {
+        id: 'sub-algebra',
+        fileName: algebraApp.fileName,
+        publishedPath: algebraApp.githubPath,
+        owner: 'Mia',
+        subject: 'Mathematics',
+        years: [9],
+        size: 20000,
+        submittedAt: new Date(Date.now() - 40 * DAY).toISOString(),
+        status: 'approved',
+        published: true
+      }
+    ];
+  });
+
+  afterAll(() => {
+    component.submissions = previousSubmissions;
+    component.role = previousRole;
+  });
+
+  it('builds one record per published cloud file, enriched from the matching submission', () => {
+    const records = component.cloudResourceRecords;
+    expect(records.length).toBe(3);
+
+    const schedule = records.find(r => r.fileName.includes('class schedule'));
+    expect(schedule.owner).toBe('Peter');
+    expect(schedule.size).toBe(500000);
+
+    // The python mini app has no submission and no library.json entry, so it
+    // is not attributed to the generic "GitHub Library" sync placeholder.
+    const python = records.find(r => r.fileName.includes('python'));
+    expect(python.owner).toBe('');
+    expect(python.uploadedAt).toBeNull();
+  });
+
+  it('summarises uploads, years and subjects per teacher', () => {
+    const peter = component.teacherStatistics.find(t => t.owner === 'Peter');
+    const mia = component.teacherStatistics.find(t => t.owner === 'Mia');
+    expect(peter.uploads).toBe(1);
+    expect(peter.yearCounts[10]).toBe(1);
+    expect(peter.yearCounts[11]).toBe(1);
+    expect(mia.uploads).toBe(1);
+    expect(mia.yearCounts[9]).toBe(1);
+    expect(mia.subjectCounts.Mathematics).toBe(1);
+  });
+
+  it('counts resources per Year 9–12 level', () => {
+    const { counts } = component.yearLevelStatistics;
+    expect(counts[9]).toBe(1);
+    expect(counts[10]).toBe(1);
+    expect(counts[11]).toBe(2); // the schedule (Years 10 & 11) and the python app (inferred Year 11)
+    expect(counts[12]).toBe(0);
+  });
+
+  it('totals known cloud storage and flags the unknown-size file', () => {
+    const storage = component.cloudStorageStatistics;
+    expect(storage.totalBytes).toBe(520000);
+    expect(storage.knownCount).toBe(2);
+    expect(storage.unknownCount).toBe(1);
+  });
+
+  it('buckets resources by time since upload', () => {
+    const buckets = component.resourcesByAgeBucket;
+    expect(buckets.week.map(r => r.fileName)).toEqual([component.apps.find(a => a.fileName.includes('schedule')).fileName]);
+    expect(buckets.older.map(r => r.fileName)).toEqual([component.apps.find(a => a.fileName.includes('algebra')).fileName]);
+    expect(buckets.unknown.some(r => r.fileName.includes('python'))).toBe(true);
+  });
+
+  it('flags the old, undownloaded resource for cleanup, oldest first', () => {
+    component.statsCleanupMinAgeDays = 30;
+    component.statsCleanupMaxDownloads = 0;
+    const candidates = component.cleanupCandidates;
+    expect(candidates.length).toBe(1);
+    expect(candidates[0].fileName).toContain('algebra');
+  });
+
+  it('renders the Statistics section in the dashboard without unresolved bindings', async () => {
+    component.currentView = 'dashboard';
+    await new Promise(done => setTimeout(done, 50));
+
+    const text = document.body.textContent;
+    expect(text).toContain('Resource Statistics');
+    expect(text).toContain('Peter');
+    expect(text).toContain('Mia');
+    expect(text).toContain('Teacher Activity');
+    // No stray "[object Object]" or "undefined" leaking from a bad binding.
+    expect(text).not.toContain('[object Object]');
+
+    component.currentView = 'library';
+  });
+});
+
 describe('degraded counter backend', () => {
   it('stays online-safe when every backend fails', () => {
     // fetch throws for all counter traffic in this test, so the client must
@@ -674,6 +799,7 @@ describe('administrator cloud file deletion and dashboard features', () => {
     expect(component.apps.length).toBe(initialCount - 1);
   });
 });
+
 
 // ---------------------------------------------------------------------------
 // The shared publishing token: saved into the repository by the

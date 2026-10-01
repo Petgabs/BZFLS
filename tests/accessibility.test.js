@@ -116,7 +116,7 @@ describe('index.html accessibility', () => {
   // axe would scan a nearly empty page and pass for the wrong reason.
   it('scans a fully expanded page', () => {
     expect(document.querySelectorAll('button').length).toBeGreaterThan(20);
-    expect(document.querySelectorAll('table').length).toBe(2);
+    expect(document.querySelectorAll('table').length).toBe(3);
     expect(document.querySelectorAll('[role="dialog"]').length).toBe(2);
     expect(document.querySelector('iframe')).not.toBeNull();
     // No unresolved Alpine binding may remain on the accessibility tree.

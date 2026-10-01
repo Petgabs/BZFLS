@@ -124,6 +124,19 @@ import {
 } from './lib/githubPublish.js';
 
 import {
+  buildResourceRecord,
+  summariseByTeacher,
+  summariseByYearLevel,
+  summariseBySubject,
+  summariseStorage,
+  bucketResourcesByAge,
+  findCleanupCandidates,
+  AGE_BUCKETS,
+  AGE_BUCKET_LABELS,
+  YEAR_LEVELS
+} from './lib/resourceStats.js';
+
+import {
   pendingPathFor,
   queueEntryFromSubmission,
   submissionFromQueueEntry,
@@ -310,6 +323,17 @@ export function schoolCloud() {
       updatedAtLabel: 'never'
     },
 
+    // --- Resource statistics (admin) -----------------------------------------
+    // Thresholds for the "needs cleanup" list: a resource is flagged once it
+    // has sat in the cloud for at least this many days with at most this many
+    // downloads. Adjustable from the Statistics section.
+    statsCleanupMinAgeDays: 30,
+    statsCleanupMaxDownloads: 0,
+    ageBucketLabels: AGE_BUCKET_LABELS,
+    ageBuckets: AGE_BUCKETS,
+    yearLevels: YEAR_LEVELS,
+    statsAgeBucketOpen: 'week',
+
     // --- Derived collections ------------------------------------------------
 
     get isAdmin() {
@@ -463,6 +487,90 @@ export function schoolCloud() {
 
     get cloudAppCount() {
       return this.apps.filter(app => app.source === 'github').length;
+    },
+
+    // --- Resource statistics (admin) -----------------------------------------
+    //
+    // Built from every file currently published in the GitHub cloud, each
+    // enriched with the matching teacher-upload record from the cross-device
+    // review queue (submissions/queue.json) when one exists — that record is
+    // the only reliable source of who uploaded a file, its true size and when
+    // it reached the cloud. See assets/js/lib/resourceStats.js.
+
+    /** The submission (any status) that produced a given published resource. */
+    findSubmissionForResource(resource) {
+      const path = String(resource?.githubPath || `apps/${resource?.fileName || ''}`).trim().toLowerCase();
+      const fileName = String(resource?.fileName || '').trim().toLowerCase();
+      if (!fileName) return null;
+
+      const matches = (this.submissions || []).filter(sub => {
+        const subPath = String(sub?.publishedPath || '').trim().toLowerCase();
+        const subFile = String(sub?.fileName || '').trim().toLowerCase();
+        if (subPath && path && subPath === path) return true;
+        return Boolean(subFile) && subFile === fileName;
+      });
+      if (!matches.length) return null;
+
+      const publishedMatch = matches.find(sub =>
+        sub.published && String(sub.publishedPath || '').trim().toLowerCase() === path
+      );
+      if (publishedMatch) return publishedMatch;
+
+      return [...matches].sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0))[0];
+    },
+
+    /** One unified statistics record per file currently published to GitHub. */
+    get cloudResourceRecords() {
+      return this.apps
+        .filter(app => app.source === 'github')
+        .map(resource => buildResourceRecord(resource, {
+          submission: this.findSubmissionForResource(resource),
+          downloads: this.downloadsOf(resource)
+        }));
+    },
+
+    /** Per-teacher: uploads, storage, year/subject spread, last upload. */
+    get teacherStatistics() {
+      return summariseByTeacher(this.cloudResourceRecords);
+    },
+
+    /** Resource counts for Year 9 / 10 / 11 / 12. */
+    get yearLevelStatistics() {
+      return summariseByYearLevel(this.cloudResourceRecords);
+    },
+
+    /** Resource counts (and storage) per subject, most popular first. */
+    get subjectStatistics() {
+      return summariseBySubject(this.cloudResourceRecords);
+    },
+
+    /** Total bytes occupied in the GitHub cloud, and how much is known. */
+    get cloudStorageStatistics() {
+      return summariseStorage(this.cloudResourceRecords);
+    },
+
+    /** Resources grouped by how long ago they were published. */
+    get resourcesByAgeBucket() {
+      return bucketResourcesByAge(this.cloudResourceRecords);
+    },
+
+    /** Resources old enough and little/never downloaded — candidates to remove. */
+    get cleanupCandidates() {
+      return findCleanupCandidates(this.cloudResourceRecords, {
+        minAgeDays: Number(this.statsCleanupMinAgeDays) || 0,
+        maxDownloads: Number(this.statsCleanupMaxDownloads) || 0
+      });
+    },
+
+    setStatsAgeBucket(bucket) {
+      this.statsAgeBucketOpen = this.statsAgeBucketOpen === bucket ? '' : bucket;
+      this.$nextTick(() => refreshIcons());
+    },
+
+    /** Delete a resource straight from the Statistics section's lists. */
+    deleteCloudResourceById(id) {
+      const app = this.apps.find(item => item.id === id);
+      if (app) this.confirmDeleteApp(app);
     },
 
     // --- Lifecycle ----------------------------------------------------------
@@ -795,6 +903,9 @@ export function schoolCloud() {
       if (!this.requireAdmin()) return;
       this.currentView = 'dashboard';
       this.refreshStats();
+      // Resource Statistics needs every teacher's uploads, not just this
+      // device's, so pull in the shared cloud queue too.
+      this.loadCloudQueue({ silent: true });
     },
 
     // --- Display helpers ----------------------------------------------------
@@ -812,6 +923,11 @@ export function schoolCloud() {
 
     downloadLabel(item) {
       return downloadLabel(this.downloadsOf(item));
+    },
+
+    /** Same label, but from an already-known count (resource statistics records). */
+    formatDownloadCount(count) {
+      return downloadLabel(count);
     },
 
     fileExtension(item) {
