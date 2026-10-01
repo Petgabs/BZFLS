@@ -1,7 +1,7 @@
 [
   {
     "id": "5a464b12-8cfe-4b5c-aeed-a12be8d3ee4a",
-    "path": "submissions/pending/5a464b12-8cfe-4b5c-aeed-a12be8d3ee4a__HSC TV slide-Week 6.pptx",
+    "path": "",
     "fileName": "HSC TV slide-Week 6.pptx",
     "size": 10405312,
     "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -25,13 +25,13 @@
     "accessibility": "",
     "submittedBy": "teacher",
     "submittedAt": "2026-10-01T07:09:58.274Z",
-    "status": "pending",
-    "reviewedAt": "",
-    "reviewedBy": "",
+    "status": "approved",
+    "reviewedAt": "2026-10-01T07:11:26.990Z",
+    "reviewedBy": "administrator",
     "reviewNote": "",
-    "published": false,
-    "publishedPath": "",
-    "commitUrl": ""
+    "published": true,
+    "publishedPath": "apps/HSC TV slide-Week 6.pptx",
+    "commitUrl": "https://github.com/Petgabs/BZFLS/commit/03ac8ee6764289081172ae4d0510402519696e8f"
   },
   {
     "id": "c9983d78-b94e-4bda-98d5-c459a88d3e7d",
