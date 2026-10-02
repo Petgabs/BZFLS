@@ -592,11 +592,15 @@ export function schoolCloud() {
         .sort((a, b) => b.count - a.count || a.subject.localeCompare(b.subject));
     },
 
-    /** A human greeting keeps the landing space friendly without storing student data. */
+    /**
+     * A human greeting keeps the landing space friendly without storing student data.
+     * The wording follows the local clock of the device viewing the site:
+     * morning before midday, noon through the afternoon, evening after 18:00.
+     */
     get studentGreeting() {
       const hour = new Date().getHours();
       if (hour < 12) return 'Good morning';
-      if (hour < 18) return 'Good afternoon';
+      if (hour < 18) return 'Good noon';
       return 'Good evening';
     },
 
