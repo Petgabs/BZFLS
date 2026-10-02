@@ -281,5 +281,19 @@
     "department": "Mathematics",
     "version": "1.0",
     "addedAt": "2026-10-02T11:37:28.988Z"
+  },
+  "apps/2023-hsc-maths-adv (1).pdf": {
+    "title": "HSC maths adv 20203 — 3 hrs paper",
+    "description": "",
+    "subject": "Mathematics",
+    "years": [
+      12
+    ],
+    "keywords": [],
+    "language": "English",
+    "owner": "Peter",
+    "department": "Mathematics",
+    "version": "1.0",
+    "addedAt": "2026-10-02T11:36:45.163Z"
   }
 }
